@@ -682,7 +682,6 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
         val layoutSelectionBadge: FrameLayout = itemView.findViewById(R.id.layoutSelectionBadge)
         val tvSelectionNumber: TextView = itemView.findViewById(R.id.tvSelectionNumber)
         val tvDuration: TextView = itemView.findViewById(R.id.tvDuration)
-        val ivScissors: ImageView = itemView.findViewById(R.id.ivScissors)
 
         // Audio Views
         val layoutAudioContainer: View = itemView.findViewById(R.id.layoutAudioContainer)
@@ -729,10 +728,8 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
                 if (item.type == MediaType.VIDEO) {
                     tvDuration.visibility = View.VISIBLE
                     tvDuration.text = formatDuration(item.durationMs)
-                    ivScissors.visibility = View.VISIBLE
                 } else {
                     tvDuration.visibility = View.GONE
-                    ivScissors.visibility = View.GONE
                 }
 
                 loadThumbnailAsync(item, ivThumbnail)
@@ -875,7 +872,6 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
     private inner class SelectedThumbViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val ivSelectedThumb: ImageView = itemView.findViewById(R.id.ivSelectedThumb)
         val tvSelectedDuration: TextView = itemView.findViewById(R.id.tvSelectedDuration)
-        val ivSelectedScissors: ImageView = itemView.findViewById(R.id.ivSelectedScissors)
         val btnRemoveSelected: FrameLayout = itemView.findViewById(R.id.btnRemoveSelected)
 
         fun bind(item: MediaModel, onRemoveClick: (MediaModel) -> Unit) {
@@ -884,10 +880,8 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
             if (item.type == MediaType.VIDEO) {
                 tvSelectedDuration.visibility = View.VISIBLE
                 tvSelectedDuration.text = formatPreciseDuration(item.durationMs)
-                ivSelectedScissors.visibility = View.VISIBLE
             } else {
                 tvSelectedDuration.visibility = View.GONE
-                ivSelectedScissors.visibility = View.GONE
             }
 
             val cacheKey = item.uri.toString()

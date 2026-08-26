@@ -88,18 +88,6 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent" />
 
-        <!-- Scissors Icon at Bottom-Right for Video items -->
-        <ImageView
-            android:id="@+id/ivScissors"
-            android:layout_width="14dp"
-            android:layout_height="14dp"
-            android:layout_marginEnd="5dp"
-            android:layout_marginBottom="4dp"
-            android:src="@drawable/ic_scissors_white_14"
-            android:visibility="gone"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
-
     </androidx.constraintlayout.widget.ConstraintLayout>
 
     <!-- Audio List Row Mode -->

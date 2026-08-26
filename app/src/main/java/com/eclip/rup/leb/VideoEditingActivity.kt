@@ -4560,6 +4560,9 @@ class VideoEditingActivity : AppCompatActivity() {
             onMediaSelectedListener = { uri ->
                 processMergeVideoUris(listOf(uri))
             }
+            onMultipleMediaSelectedListener = { uris ->
+                processMergeVideoUris(uris)
+            }
             onBrowseSystemFoldersRequested = {
                 val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     type = "*/*"
@@ -5313,6 +5316,10 @@ class VideoEditingActivity : AppCompatActivity() {
                 currentDraftId = "draft_${System.currentTimeMillis()}"
             }
             videoUri = intent.getParcelableExtra("VIDEO_URI")
+            val mediaUris = intent.getParcelableArrayListExtra<Uri>("MEDIA_URIS")
+            if (videoUri == null && !mediaUris.isNullOrEmpty()) {
+                videoUri = mediaUris.first()
+            }
         }
 
         if (videoUri != null && videoUri?.scheme == "content") {
@@ -5320,6 +5327,19 @@ class VideoEditingActivity : AppCompatActivity() {
                 contentResolver.takePersistableUriPermission(videoUri!!, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             } catch (e: Exception) {
                 Log.d(TAG, "Could not take persistable URI permission for videoUri: ${e.message}")
+            }
+        }
+
+        val allIncomingMediaUris = intent.getParcelableArrayListExtra<Uri>("MEDIA_URIS")
+        if (allIncomingMediaUris != null) {
+            for (uri in allIncomingMediaUris) {
+                if (uri.scheme == "content") {
+                    try {
+                        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Could not take persistable URI permission for media item: ${e.message}")
+                    }
+                }
             }
         }
         
@@ -5410,6 +5430,12 @@ class VideoEditingActivity : AppCompatActivity() {
             if (projectUri == null) {
                 val displayName = videoUri!!.lastPathSegment ?: "video"
                 viewModel.initializeProject(videoUri!!, displayName)
+
+                // If multiple media items were selected in the gallery, append items 2..N to timeline sequence
+                val mediaUris = intent.getParcelableArrayListExtra<Uri>("MEDIA_URIS")
+                if (mediaUris != null && mediaUris.size > 1) {
+                    processMergeVideoUris(mediaUris.drop(1))
+                }
             }
         }
     }
@@ -7989,7 +8015,7 @@ class VideoEditingActivity : AppCompatActivity() {
             } else {
                 extension
             }
-            val tempFile = File(cacheDir, "${prefix}_${System.currentTimeMillis()}$ext")
+            val tempFile = File(cacheDir, "${prefix}_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}$ext")
             val inputStream = if (contentUri.scheme == "file") {
                 // file:// URIs (from fallback directory scanner) must be opened directly;
                 // ContentResolver cannot open them on Android 7+.
