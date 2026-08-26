@@ -164,4 +164,15 @@
     <string name="str_haptic_feedback">हैप्टिक फ़ीडबैक</string>
     <string name="str_haptic_enabled_desc">सक्षम (इन-ऐप कंपन सक्रिय)</string>
     <string name="str_haptic_disabled_desc">अक्षम (इन-ऐप कंपन बंद)</string>
+    <string name="str_drafts">ड्राफ्ट</string>
+    <string name="str_drafts_info_desc">ड्राफ्ट और हालिया संपादन आपके डिवाइस पर स्थानीय रूप से सहेजे जाते हैं।</string>
+    <string name="str_no_drafts_yet">कोई ड्राफ्ट नहीं है</string>
+    <string name="str_no_drafts_desc">आपके द्वारा बनाए गए प्रोजेक्ट स्वचालित रूप से यहाँ सहेजे जाएंगे।</string>
+    <string name="str_delete_draft">ड्राफ्ट हटाएं</string>
+    <string name="str_delete_draft_confirm">क्या आप वाकई इस ड्राफ्ट प्रोजेक्ट को हटाना चाहते हैं?</string>
+    <string name="str_open">खोलें</string>
+    <string name="str_delete">हटाएं</string>
+    <string name="str_select_all">सभी चुनें</string>
+    <string name="str_deselect_all">सभी अचयनित करें</string>
+    <string name="str_delete_selected_drafts_confirm">क्या आप वाकई %1$d चयनित ड्राफ्ट हटाना चाहते हैं?</string>
 </resources>

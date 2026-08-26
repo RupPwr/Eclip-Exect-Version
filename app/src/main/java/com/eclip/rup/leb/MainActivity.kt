@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -131,10 +132,12 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Handle Back press to navigate from Settings to Home if open
+        // Handle Back press to navigate from Selection Mode to Normal, or from Settings to Home
         onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (binding.layoutSettingsContent.visibility == View.VISIBLE) {
+                if (draftsAdapter.isSelectionMode) {
+                    exitDraftSelectionMode()
+                } else if (binding.layoutSettingsContent.visibility == View.VISIBLE) {
                     showHomeScreen()
                 } else {
                     isEnabled = false
@@ -169,9 +172,39 @@ class MainActivity : AppCompatActivity() {
             onDraftClick = { draft -> openDraft(draft) },
             onDraftDelete = { draft -> confirmDeleteDraft(draft) }
         )
+        draftsAdapter.onSelectionChangedListener = { selectedCount, totalCount ->
+            updateDraftSelectionUI(selectedCount, totalCount)
+        }
         binding.rvDrafts.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, 3)
         binding.rvDrafts.adapter = draftsAdapter
         loadDrafts()
+
+        // Draft Selection Mode Toggle Button (Three-line icon in Drafts header)
+        binding.btnToggleDraftSelection.setBounceClickListener {
+            if (draftsAdapter.isSelectionMode) {
+                exitDraftSelectionMode()
+            } else {
+                enterDraftSelectionMode()
+            }
+        }
+
+        // Draft Selection Actions: Select All & Delete
+        binding.btnSelectAllDrafts.setBounceClickListener {
+            if (draftsAdapter.isAllSelected()) {
+                draftsAdapter.deselectAll()
+            } else {
+                draftsAdapter.selectAll()
+            }
+        }
+
+        binding.btnDeleteSelectedDrafts.setBounceClickListener {
+            val selected = draftsAdapter.getSelectedDrafts()
+            if (selected.isEmpty()) {
+                showToast("No draft selected")
+            } else {
+                confirmDeleteMultipleDrafts(selected)
+            }
+        }
         
         // Setup Settings Actions
         binding.btnChangeExportFolder.setBounceClickListener {
@@ -478,11 +511,65 @@ class MainActivity : AppCompatActivity() {
         if (drafts.isEmpty()) {
             binding.rvDrafts.visibility = View.GONE
             binding.layoutEmptyDrafts.visibility = View.VISIBLE
+            exitDraftSelectionMode()
         } else {
             binding.layoutEmptyDrafts.visibility = View.GONE
             binding.rvDrafts.visibility = View.VISIBLE
             draftsAdapter.updateData(drafts)
         }
+    }
+
+    private fun enterDraftSelectionMode() {
+        val drafts = com.eclip.rup.leb.utils.DraftManager.getAllDrafts(this)
+        if (drafts.isEmpty()) {
+            showToast("No drafts to select")
+            return
+        }
+        draftsAdapter.toggleSelectionMode(true)
+        binding.layoutDraftSelectionBar.visibility = View.VISIBLE
+        binding.btnToggleDraftSelection.setColorFilter(Color.parseColor("#FF2A6D"))
+        updateDraftSelectionUI(draftsAdapter.selectedDraftIds.size, drafts.size)
+    }
+
+    private fun exitDraftSelectionMode() {
+        draftsAdapter.toggleSelectionMode(false)
+        binding.layoutDraftSelectionBar.visibility = View.GONE
+        binding.btnToggleDraftSelection.clearColorFilter()
+    }
+
+    private fun updateDraftSelectionUI(selectedCount: Int, totalCount: Int) {
+        if (draftsAdapter.isAllSelected()) {
+            binding.btnSelectAllDrafts.text = getString(R.string.str_deselect_all)
+            binding.btnSelectAllDrafts.setIconResource(R.drawable.ic_close_24)
+        } else {
+            binding.btnSelectAllDrafts.text = getString(R.string.str_select_all)
+            binding.btnSelectAllDrafts.setIconResource(R.drawable.ic_check_24)
+        }
+
+        binding.btnDeleteSelectedDrafts.text = if (selectedCount > 0) {
+            "${getString(R.string.str_delete)} ($selectedCount)"
+        } else {
+            getString(R.string.str_delete)
+        }
+        binding.btnDeleteSelectedDrafts.alpha = if (selectedCount > 0) 1.0f else 0.5f
+    }
+
+    private fun confirmDeleteMultipleDrafts(selectedDrafts: List<com.eclip.rup.leb.utils.DraftItem>) {
+        val count = selectedDrafts.size
+        val message = getString(R.string.str_delete_selected_drafts_confirm, count)
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.str_delete_draft)
+            .setMessage(message)
+            .setPositiveButton(R.string.delete) { _, _ ->
+                for (draft in selectedDrafts) {
+                    com.eclip.rup.leb.utils.DraftManager.deleteDraft(this, draft.id)
+                }
+                exitDraftSelectionMode()
+                loadDrafts()
+                showToast("$count draft(s) deleted")
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun openDraft(draft: com.eclip.rup.leb.utils.DraftItem) {
@@ -518,6 +605,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSettingsScreen() {
+        if (draftsAdapter.isSelectionMode) {
+            exitDraftSelectionMode()
+        }
         binding.layoutTopHeader.visibility = View.GONE
         binding.layoutHomeContent.visibility = View.GONE
         binding.layoutSettingsContent.visibility = View.VISIBLE

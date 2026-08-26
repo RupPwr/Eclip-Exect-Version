@@ -17,13 +17,21 @@ class DraftsAdapter(
     private val onDraftDelete: (DraftItem) -> Unit
 ) : RecyclerView.Adapter<DraftsAdapter.DraftViewHolder>() {
 
+    var isSelectionMode: Boolean = false
+        private set
+
+    val selectedDraftIds = mutableSetOf<String>()
+    var onSelectionChangedListener: ((selectedCount: Int, totalCount: Int) -> Unit)? = null
+
     class DraftViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val root: View = view.findViewById(R.id.cardDraftRoot)
         val ivThumbnail: ImageView = view.findViewById(R.id.ivDraftThumbnail)
         val ivPlaceholder: ImageView = view.findViewById(R.id.ivDraftPlaceholder)
+        val vSelectedOverlay: View = view.findViewById(R.id.vDraftSelectedOverlay)
         val tvTitle: TextView = view.findViewById(R.id.tvDraftTitle)
         val tvDuration: TextView = view.findViewById(R.id.tvDraftDuration)
         val btnOptions: ImageView = view.findViewById(R.id.btnDraftOptions)
+        val ivCheck: ImageView = view.findViewById(R.id.ivDraftCheck)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): DraftViewHolder {
@@ -56,35 +64,102 @@ class DraftsAdapter(
             holder.ivPlaceholder.visibility = View.VISIBLE
         }
 
-        holder.root.setBounceClickListener {
-            onDraftClick(draft)
-        }
+        if (isSelectionMode) {
+            holder.btnOptions.visibility = View.GONE
+            holder.ivCheck.visibility = View.VISIBLE
 
-        holder.btnOptions.setOnClickListener { v ->
-            val popup = PopupMenu(v.context, v)
-            popup.menu.add(0, 1, 0, R.string.str_open)
-            popup.menu.add(0, 2, 1, R.string.str_delete_draft)
-            popup.setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    1 -> {
-                        onDraftClick(draft)
-                        true
-                    }
-                    2 -> {
-                        onDraftDelete(draft)
-                        true
-                    }
-                    else -> false
-                }
+            val isSelected = selectedDraftIds.contains(draft.id)
+            holder.vSelectedOverlay.visibility = if (isSelected) View.VISIBLE else View.GONE
+
+            if (isSelected) {
+                holder.ivCheck.setBackgroundResource(R.drawable.bg_draft_check_selected)
+                holder.ivCheck.setImageResource(R.drawable.ic_check_24)
+            } else {
+                holder.ivCheck.setBackgroundResource(R.drawable.bg_draft_check_unselected)
+                holder.ivCheck.setImageDrawable(null)
             }
-            popup.show()
+
+            holder.root.setOnClickListener {
+                toggleSelection(draft)
+            }
+            holder.ivCheck.setOnClickListener {
+                toggleSelection(draft)
+            }
+        } else {
+            holder.btnOptions.visibility = View.VISIBLE
+            holder.ivCheck.visibility = View.GONE
+            holder.vSelectedOverlay.visibility = View.GONE
+
+            holder.root.setBounceClickListener {
+                onDraftClick(draft)
+            }
+
+            holder.btnOptions.setOnClickListener { v ->
+                val popup = PopupMenu(v.context, v)
+                popup.menu.add(0, 1, 0, R.string.str_open)
+                popup.menu.add(0, 2, 1, R.string.str_delete_draft)
+                popup.setOnMenuItemClickListener { item ->
+                    when (item.itemId) {
+                        1 -> {
+                            onDraftClick(draft)
+                            true
+                        }
+                        2 -> {
+                            onDraftDelete(draft)
+                            true
+                        }
+                        else -> false
+                    }
+                }
+                popup.show()
+            }
         }
     }
 
     override fun getItemCount(): Int = drafts.size
 
+    fun toggleSelectionMode(enabled: Boolean) {
+        isSelectionMode = enabled
+        if (!enabled) {
+            selectedDraftIds.clear()
+        }
+        notifyDataSetChanged()
+        onSelectionChangedListener?.invoke(selectedDraftIds.size, drafts.size)
+    }
+
+    fun toggleSelection(draft: DraftItem) {
+        if (selectedDraftIds.contains(draft.id)) {
+            selectedDraftIds.remove(draft.id)
+        } else {
+            selectedDraftIds.add(draft.id)
+        }
+        notifyDataSetChanged()
+        onSelectionChangedListener?.invoke(selectedDraftIds.size, drafts.size)
+    }
+
+    fun selectAll() {
+        selectedDraftIds.clear()
+        selectedDraftIds.addAll(drafts.map { it.id })
+        notifyDataSetChanged()
+        onSelectionChangedListener?.invoke(selectedDraftIds.size, drafts.size)
+    }
+
+    fun deselectAll() {
+        selectedDraftIds.clear()
+        notifyDataSetChanged()
+        onSelectionChangedListener?.invoke(selectedDraftIds.size, drafts.size)
+    }
+
+    fun isAllSelected(): Boolean = drafts.isNotEmpty() && selectedDraftIds.size == drafts.size
+
+    fun getSelectedDrafts(): List<DraftItem> = drafts.filter { selectedDraftIds.contains(it.id) }
+
     fun updateData(newDrafts: List<DraftItem>) {
         drafts = newDrafts
+        // Remove any selected IDs that no longer exist
+        val currentIds = newDrafts.map { it.id }.toSet()
+        selectedDraftIds.retainAll(currentIds)
         notifyDataSetChanged()
+        onSelectionChangedListener?.invoke(selectedDraftIds.size, drafts.size)
     }
 }

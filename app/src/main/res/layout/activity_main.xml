@@ -142,11 +142,15 @@
                 </LinearLayout>
 
                 <ImageView
-                    android:id="@+id/ivViewMode"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
+                    android:id="@+id/btnToggleDraftSelection"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
                     android:layout_alignParentEnd="true"
                     android:layout_centerVertical="true"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:padding="4dp"
                     android:src="@drawable/ic_list_view_24"
                     app:tint="@color/iconSecondary" />
             </RelativeLayout>
@@ -666,5 +670,54 @@
 
         </LinearLayout>
     </ScrollView>
+
+    <!-- Drafts Multi-Selection Action Bar (Select All | Delete) -->
+    <LinearLayout
+        android:id="@+id/layoutDraftSelectionBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:background="#16161B"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="12dp"
+        android:elevation="12dp"
+        android:visibility="gone">
+
+        <!-- Select All Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSelectAllDrafts"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="8dp"
+            android:text="@string/str_select_all"
+            android:textColor="@color/textColor"
+            android:textSize="14sp"
+            android:fontFamily="sans-serif-medium"
+            app:icon="@drawable/ic_check_24"
+            app:iconTint="@color/textColor"
+            app:cornerRadius="24dp"
+            app:backgroundTint="#26262E" />
+
+        <!-- Delete Selected Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDeleteSelectedDrafts"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="@string/str_delete"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:fontFamily="sans-serif-medium"
+            app:icon="@drawable/ic_delete_24"
+            app:iconTint="#FFFFFF"
+            app:cornerRadius="24dp"
+            app:backgroundTint="#FF2A6D" />
+
+    </LinearLayout>
 
 </RelativeLayout>

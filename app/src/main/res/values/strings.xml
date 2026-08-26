@@ -179,4 +179,8 @@
     <string name="str_delete_draft">Delete Draft</string>
     <string name="str_delete_draft_confirm">Are you sure you want to delete this draft project?</string>
     <string name="str_open">Open</string>
+    <string name="str_delete">Delete</string>
+    <string name="str_select_all">Select All</string>
+    <string name="str_deselect_all">Deselect All</string>
+    <string name="str_delete_selected_drafts_confirm">Are you sure you want to delete %1$d selected draft(s)?</string>
 </resources>
