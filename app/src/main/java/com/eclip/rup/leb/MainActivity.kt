@@ -511,12 +511,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showHomeScreen() {
+        binding.layoutTopHeader.visibility = View.VISIBLE
         binding.layoutHomeContent.visibility = View.VISIBLE
         binding.layoutSettingsContent.visibility = View.GONE
         binding.btnOpenSettings.visibility = View.VISIBLE
     }
 
     private fun showSettingsScreen() {
+        binding.layoutTopHeader.visibility = View.GONE
         binding.layoutHomeContent.visibility = View.GONE
         binding.layoutSettingsContent.visibility = View.VISIBLE
         binding.btnOpenSettings.visibility = View.GONE
