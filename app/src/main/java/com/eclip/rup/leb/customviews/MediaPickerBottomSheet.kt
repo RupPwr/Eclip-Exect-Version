@@ -29,9 +29,12 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import com.google.android.material.tabs.TabLayout
+import com.google.android.material.tabs.TabLayoutMediator
 import com.eclip.rup.leb.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -66,26 +69,8 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
 
     // UI Views
     private lateinit var btnCloseSheet: ImageView
-    private lateinit var layoutCategoryTabs: View
-    private lateinit var tabVideo: View
-    private lateinit var tvTabVideo: TextView
-    private lateinit var indicatorVideo: View
-    private lateinit var tabPhoto: View
-    private lateinit var tvTabPhoto: TextView
-    private lateinit var indicatorPhoto: View
-    private lateinit var tabAll: View
-    private lateinit var tvTabAll: TextView
-    private lateinit var indicatorAll: View
-    private lateinit var tabAudio: View
-    private lateinit var tvTabAudio: TextView
-    private lateinit var indicatorAudio: View
-
-    private lateinit var rvMediaGrid: RecyclerView
-    private lateinit var pbLoading: ProgressBar
-    private lateinit var layoutEmptyContainer: View
-    private lateinit var tvEmptyState: TextView
-    private lateinit var btnGrantPermission: View
-    private lateinit var btnSystemPickerFallback: View
+    private lateinit var tabLayoutGallery: TabLayout
+    private lateinit var viewPagerGallery: ViewPager2
 
     // Bottom Selected Tray Views
     private lateinit var layoutSelectedTray: LinearLayout
@@ -95,30 +80,35 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
     private lateinit var rvSelectedItems: RecyclerView
     private lateinit var tvSwapHint: TextView
 
-    // State & Data
-    private val allFetchedItems = mutableListOf<MediaModel>()
-    private val displayedItems = mutableListOf<MediaModel>()
+    // Available tabs for current session
+    private val availableTabs = mutableListOf<TabType>()
+
+    // Data Cache per Tab
+    private val tabDataMap = mutableMapOf<TabType, MutableList<MediaModel>>()
+    private val tabLoadedMap = mutableMapOf<TabType, Boolean>()
     private val selectedItems = mutableListOf<MediaModel>()
 
-    private var currentTab: TabType = TabType.VIDEO
-    private var adapter: MediaGridAdapter? = null
-    private var selectedAdapter: SelectedThumbAdapter? = null
+    // Active page adapters & viewholders
+    private val activeAdapters = mutableMapOf<TabType, MediaGridAdapter>()
+    private val activePageHolders = mutableMapOf<TabType, GalleryPageViewHolder>()
 
-    // In-memory bitmap cache for fast smooth scrolling
-    private val thumbnailCache = object : LruCache<String, Bitmap>(100) {}
+    private var galleryPagerAdapter: GalleryPagerAdapter? = null
+    private var selectedAdapter: SelectedThumbAdapter? = null
+    private var tabMediator: TabLayoutMediator? = null
+
+    // In-memory bitmap cache for smooth 60fps scrolling
+    private val thumbnailCache = object : LruCache<String, Bitmap>(150) {}
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val granted = permissions.values.any { it }
         if (granted) {
-            btnGrantPermission.visibility = View.GONE
-            loadMediaForCurrentTab()
+            loadMediaForAllTabs()
         } else {
-            pbLoading.visibility = View.GONE
-            layoutEmptyContainer.visibility = View.VISIBLE
-            tvEmptyState.text = "Permission denied. Grant access or browse folders."
-            btnGrantPermission.visibility = View.VISIBLE
+            for (tab in availableTabs) {
+                activePageHolders[tab]?.showPermissionDenied()
+            }
         }
     }
 
@@ -136,28 +126,11 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
         super.onViewCreated(view, savedInstanceState)
 
         bindViews(view)
+        setupAvailableTabs()
         setupTopNavigation()
-        setupCategoryTabs()
-        setupRecyclerViews()
+        setupViewPagerAndTabs()
         setupSelectedTray()
 
-        // Set initial tab state based on initialMediaType
-        currentTab = when (initialMediaType) {
-            MediaType.VIDEO -> TabType.VIDEO
-            MediaType.IMAGE -> TabType.PHOTO
-            MediaType.AUDIO -> TabType.AUDIO
-        }
-
-        if (showAudioTab || initialMediaType == MediaType.AUDIO) {
-            tabAudio.visibility = View.VISIBLE
-        }
-
-        if (!showCategoryTabs && initialMediaType == MediaType.AUDIO) {
-            layoutCategoryTabs.visibility = View.GONE
-        }
-
-        updateTabSelectionUI(currentTab)
-        updateLayoutManagerForTab(currentTab)
         checkPermissionsAndLoadMedia()
     }
 
@@ -173,28 +146,18 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
         }
     }
 
+    override fun onDestroyView() {
+        tabMediator?.detach()
+        tabMediator = null
+        activeAdapters.clear()
+        activePageHolders.clear()
+        super.onDestroyView()
+    }
+
     private fun bindViews(view: View) {
         btnCloseSheet = view.findViewById(R.id.btnCloseSheet)
-        layoutCategoryTabs = view.findViewById(R.id.layoutCategoryTabs)
-        tabVideo = view.findViewById(R.id.tabVideo)
-        tvTabVideo = view.findViewById(R.id.tvTabVideo)
-        indicatorVideo = view.findViewById(R.id.indicatorVideo)
-        tabPhoto = view.findViewById(R.id.tabPhoto)
-        tvTabPhoto = view.findViewById(R.id.tvTabPhoto)
-        indicatorPhoto = view.findViewById(R.id.indicatorPhoto)
-        tabAll = view.findViewById(R.id.tabAll)
-        tvTabAll = view.findViewById(R.id.tvTabAll)
-        indicatorAll = view.findViewById(R.id.indicatorAll)
-        tabAudio = view.findViewById(R.id.tabAudio)
-        tvTabAudio = view.findViewById(R.id.tvTabAudio)
-        indicatorAudio = view.findViewById(R.id.indicatorAudio)
-
-        rvMediaGrid = view.findViewById(R.id.rvMediaGrid)
-        pbLoading = view.findViewById(R.id.pbLoading)
-        layoutEmptyContainer = view.findViewById(R.id.layoutEmptyContainer)
-        tvEmptyState = view.findViewById(R.id.tvEmptyState)
-        btnGrantPermission = view.findViewById(R.id.btnGrantPermission)
-        btnSystemPickerFallback = view.findViewById(R.id.btnSystemPickerFallback)
+        tabLayoutGallery = view.findViewById(R.id.tabLayoutGallery)
+        viewPagerGallery = view.findViewById(R.id.viewPagerGallery)
 
         layoutSelectedTray = view.findViewById(R.id.layoutSelectedTray)
         btnDeleteSelected = view.findViewById(R.id.btnDeleteSelected)
@@ -204,74 +167,75 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
         tvSwapHint = view.findViewById(R.id.tvSwapHint)
     }
 
+    private fun setupAvailableTabs() {
+        availableTabs.clear()
+        if (!showCategoryTabs && initialMediaType == MediaType.AUDIO) {
+            availableTabs.add(TabType.AUDIO)
+        } else if (showAudioTab || initialMediaType == MediaType.AUDIO) {
+            availableTabs.add(TabType.VIDEO)
+            availableTabs.add(TabType.PHOTO)
+            availableTabs.add(TabType.ALL)
+            availableTabs.add(TabType.AUDIO)
+        } else {
+            availableTabs.add(TabType.VIDEO)
+            availableTabs.add(TabType.PHOTO)
+            availableTabs.add(TabType.ALL)
+        }
+
+        for (tab in availableTabs) {
+            if (!tabDataMap.containsKey(tab)) {
+                tabDataMap[tab] = mutableListOf()
+                tabLoadedMap[tab] = false
+            }
+        }
+    }
+
     private fun setupTopNavigation() {
         btnCloseSheet.setOnClickListener {
             dismiss()
         }
 
-        btnGrantPermission.setOnClickListener {
-            requestStoragePermissions()
-        }
-
-        btnSystemPickerFallback.setOnClickListener {
-            dismiss()
-            onBrowseSystemFoldersRequested?.invoke()
-        }
-    }
-
-    private fun setupCategoryTabs() {
-        tabVideo.setOnClickListener { switchTab(TabType.VIDEO) }
-        tabPhoto.setOnClickListener { switchTab(TabType.PHOTO) }
-        tabAll.setOnClickListener { switchTab(TabType.ALL) }
-        tabAudio.setOnClickListener { switchTab(TabType.AUDIO) }
-    }
-
-    private fun switchTab(tab: TabType) {
-        if (currentTab == tab) return
-        currentTab = tab
-        updateTabSelectionUI(tab)
-        updateLayoutManagerForTab(tab)
-        loadMediaForCurrentTab()
-    }
-
-    private fun updateTabSelectionUI(activeTab: TabType) {
-        val activeColor = Color.parseColor("#FFFFFF")
-        val inactiveColor = Color.parseColor("#8E8E93")
-
-        tvTabVideo.setTextColor(if (activeTab == TabType.VIDEO) activeColor else inactiveColor)
-        indicatorVideo.visibility = if (activeTab == TabType.VIDEO) View.VISIBLE else View.INVISIBLE
-
-        tvTabPhoto.setTextColor(if (activeTab == TabType.PHOTO) activeColor else inactiveColor)
-        indicatorPhoto.visibility = if (activeTab == TabType.PHOTO) View.VISIBLE else View.INVISIBLE
-
-        tvTabAll.setTextColor(if (activeTab == TabType.ALL) activeColor else inactiveColor)
-        indicatorAll.visibility = if (activeTab == TabType.ALL) View.VISIBLE else View.INVISIBLE
-
-        tvTabAudio.setTextColor(if (activeTab == TabType.AUDIO) activeColor else inactiveColor)
-        indicatorAudio.visibility = if (activeTab == TabType.AUDIO) View.VISIBLE else View.INVISIBLE
-    }
-
-    private fun updateLayoutManagerForTab(tab: TabType) {
-        rvMediaGrid.layoutManager = if (tab == TabType.AUDIO) {
-            GridLayoutManager(requireContext(), 1)
+        if (!showCategoryTabs && initialMediaType == MediaType.AUDIO) {
+            tabLayoutGallery.visibility = View.GONE
         } else {
-            GridLayoutManager(requireContext(), 4)
+            tabLayoutGallery.visibility = View.VISIBLE
         }
     }
 
-    private fun setupRecyclerViews() {
-        adapter = MediaGridAdapter(displayedItems) { clickedItem ->
-            toggleItemSelection(clickedItem)
-        }
-        rvMediaGrid.adapter = adapter
+    private fun setupViewPagerAndTabs() {
+        galleryPagerAdapter = GalleryPagerAdapter()
+        viewPagerGallery.adapter = galleryPagerAdapter
+        viewPagerGallery.offscreenPageLimit = 1
 
+        tabMediator = TabLayoutMediator(tabLayoutGallery, viewPagerGallery) { tab, position ->
+            val tabType = availableTabs[position]
+            tab.text = when (tabType) {
+                TabType.VIDEO -> "VIDEO"
+                TabType.PHOTO -> "PHOTO"
+                TabType.ALL -> "ALL"
+                TabType.AUDIO -> "AUDIO"
+            }
+        }
+        tabMediator?.attach()
+
+        // Set initial selected tab position
+        val initialIndex = when (initialMediaType) {
+            MediaType.VIDEO -> availableTabs.indexOf(TabType.VIDEO)
+            MediaType.IMAGE -> availableTabs.indexOf(TabType.PHOTO)
+            MediaType.AUDIO -> availableTabs.indexOf(TabType.AUDIO)
+        }
+        if (initialIndex >= 0) {
+            viewPagerGallery.setCurrentItem(initialIndex, false)
+        }
+    }
+
+    private fun setupSelectedTray() {
         selectedAdapter = SelectedThumbAdapter(selectedItems) { removedItem ->
             removeItemSelection(removedItem)
         }
         rvSelectedItems.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
         rvSelectedItems.adapter = selectedAdapter
 
-        // Drag and drop support for swapping order in selected bottom tray
         val touchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
             ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT, 0
         ) {
@@ -285,7 +249,7 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
                 if (fromPos != RecyclerView.NO_POSITION && toPos != RecyclerView.NO_POSITION) {
                     Collections.swap(selectedItems, fromPos, toPos)
                     selectedAdapter?.notifyItemMoved(fromPos, toPos)
-                    adapter?.notifyDataSetChanged()
+                    refreshAllActivePagesSelection()
                 }
                 return true
             }
@@ -293,13 +257,11 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
         })
         touchHelper.attachToRecyclerView(rvSelectedItems)
-    }
 
-    private fun setupSelectedTray() {
         btnDeleteSelected.setOnClickListener {
             selectedItems.clear()
             updateSelectedTrayUI()
-            adapter?.notifyDataSetChanged()
+            refreshAllActivePagesSelection()
         }
 
         btnConfirmSelection.setOnClickListener {
@@ -319,7 +281,7 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
             selectedItems.add(item)
         }
         updateSelectedTrayUI()
-        adapter?.notifyDataSetChanged()
+        refreshAllActivePagesSelection()
     }
 
     private fun removeItemSelection(item: MediaModel) {
@@ -327,7 +289,13 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
         if (index >= 0) {
             selectedItems.removeAt(index)
             updateSelectedTrayUI()
-            adapter?.notifyDataSetChanged()
+            refreshAllActivePagesSelection()
+        }
+    }
+
+    private fun refreshAllActivePagesSelection() {
+        for (adapter in activeAdapters.values) {
+            adapter.notifyDataSetChanged()
         }
     }
 
@@ -352,8 +320,7 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
 
     private fun checkPermissionsAndLoadMedia() {
         if (hasRequiredPermissions()) {
-            btnGrantPermission.visibility = View.GONE
-            loadMediaForCurrentTab()
+            loadMediaForAllTabs()
         } else {
             requestStoragePermissions()
         }
@@ -391,15 +358,18 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
         permissionLauncher.launch(permissionsToRequest.toTypedArray())
     }
 
-    private fun loadMediaForCurrentTab() {
-        pbLoading.visibility = View.VISIBLE
-        layoutEmptyContainer.visibility = View.GONE
-        allFetchedItems.clear()
-        displayedItems.clear()
-        adapter?.notifyDataSetChanged()
+    private fun loadMediaForAllTabs() {
+        for (tab in availableTabs) {
+            loadMediaForTab(tab)
+        }
+    }
+
+    private fun loadMediaForTab(tabType: TabType) {
+        val holder = activePageHolders[tabType]
+        holder?.showLoading()
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val items = when (currentTab) {
+            val items = when (tabType) {
                 TabType.VIDEO -> queryMediaStoreMedia(MediaType.VIDEO)
                 TabType.PHOTO -> queryMediaStoreMedia(MediaType.IMAGE)
                 TabType.ALL -> {
@@ -411,22 +381,13 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
             }
 
             withContext(Dispatchers.Main) {
-                pbLoading.visibility = View.GONE
-                allFetchedItems.addAll(items)
-                displayedItems.addAll(items)
-                adapter?.notifyDataSetChanged()
+                val list = tabDataMap.getOrPut(tabType) { mutableListOf() }
+                list.clear()
+                list.addAll(items)
+                tabLoadedMap[tabType] = true
 
-                if (displayedItems.isEmpty()) {
-                    layoutEmptyContainer.visibility = View.VISIBLE
-                    tvEmptyState.text = when (currentTab) {
-                        TabType.VIDEO -> "No videos found on device."
-                        TabType.PHOTO -> "No photos found on device."
-                        TabType.ALL -> "No media files found on device."
-                        TabType.AUDIO -> "No audio files found on device."
-                    }
-                } else {
-                    layoutEmptyContainer.visibility = View.GONE
-                }
+                activeAdapters[tabType]?.notifyDataSetChanged()
+                activePageHolders[tabType]?.updateEmptyState(items.isEmpty(), tabType)
             }
         }
     }
@@ -585,6 +546,110 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
         } catch (e: Exception) {
             try { retriever.release() } catch (_: Exception) {}
             0L
+        }
+    }
+
+    // -------------------------------------------------------------
+    // ViewPager2 Page Adapter
+    // -------------------------------------------------------------
+    private inner class GalleryPagerAdapter : RecyclerView.Adapter<GalleryPageViewHolder>() {
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): GalleryPageViewHolder {
+            val view = LayoutInflater.from(parent.context).inflate(R.layout.layout_media_picker_page, parent, false)
+            return GalleryPageViewHolder(view)
+        }
+
+        override fun onBindViewHolder(holder: GalleryPageViewHolder, position: Int) {
+            val tabType = availableTabs[position]
+            holder.bind(tabType)
+        }
+
+        override fun onViewRecycled(holder: GalleryPageViewHolder) {
+            super.onViewRecycled(holder)
+            holder.currentTab?.let {
+                activePageHolders.remove(it)
+                activeAdapters.remove(it)
+            }
+        }
+
+        override fun getItemCount(): Int = availableTabs.size
+    }
+
+    private inner class GalleryPageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val rvPageMediaGrid: RecyclerView = itemView.findViewById(R.id.rvPageMediaGrid)
+        val pbPageLoading: ProgressBar = itemView.findViewById(R.id.pbPageLoading)
+        val layoutPageEmptyContainer: View = itemView.findViewById(R.id.layoutPageEmptyContainer)
+        val tvPageEmptyState: TextView = itemView.findViewById(R.id.tvPageEmptyState)
+        val btnPageGrantPermission: View = itemView.findViewById(R.id.btnPageGrantPermission)
+        val btnPageSystemPickerFallback: View = itemView.findViewById(R.id.btnPageSystemPickerFallback)
+
+        var currentTab: TabType? = null
+
+        fun bind(tabType: TabType) {
+            currentTab = tabType
+            activePageHolders[tabType] = this
+
+            rvPageMediaGrid.layoutManager = if (tabType == TabType.AUDIO) {
+                GridLayoutManager(itemView.context, 1)
+            } else {
+                GridLayoutManager(itemView.context, 4)
+            }
+
+            val items = tabDataMap.getOrPut(tabType) { mutableListOf() }
+            val gridAdapter = MediaGridAdapter(items) { clickedItem ->
+                toggleItemSelection(clickedItem)
+            }
+            activeAdapters[tabType] = gridAdapter
+            rvPageMediaGrid.adapter = gridAdapter
+
+            btnPageGrantPermission.setOnClickListener {
+                requestStoragePermissions()
+            }
+
+            btnPageSystemPickerFallback.setOnClickListener {
+                dismiss()
+                onBrowseSystemFoldersRequested?.invoke()
+            }
+
+            val isLoaded = tabLoadedMap[tabType] ?: false
+            if (isLoaded) {
+                pbPageLoading.visibility = View.GONE
+                updateEmptyState(items.isEmpty(), tabType)
+            } else {
+                if (hasRequiredPermissions()) {
+                    loadMediaForTab(tabType)
+                } else {
+                    showPermissionDenied()
+                }
+            }
+        }
+
+        fun showLoading() {
+            pbPageLoading.visibility = View.VISIBLE
+            layoutPageEmptyContainer.visibility = View.GONE
+        }
+
+        fun updateEmptyState(isEmpty: Boolean, tabType: TabType) {
+            pbPageLoading.visibility = View.GONE
+            btnPageGrantPermission.visibility = View.GONE
+            if (isEmpty) {
+                layoutPageEmptyContainer.visibility = View.VISIBLE
+                tvPageEmptyState.text = when (tabType) {
+                    TabType.VIDEO -> "No videos found on device."
+                    TabType.PHOTO -> "No photos found on device."
+                    TabType.ALL -> "No media files found on device."
+                    TabType.AUDIO -> "No audio files found on device."
+                }
+            } else {
+                layoutPageEmptyContainer.visibility = View.GONE
+            }
+        }
+
+        fun showPermissionDenied() {
+            pbPageLoading.visibility = View.GONE
+            layoutPageEmptyContainer.visibility = View.VISIBLE
+            tvPageEmptyState.text = "Permission denied. Grant access or browse folders."
+            btnPageGrantPermission.visibility = View.VISIBLE
         }
     }
 

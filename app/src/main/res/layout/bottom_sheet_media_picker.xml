@@ -6,7 +6,7 @@
     android:orientation="vertical"
     android:background="#000000">
 
-    <!-- Unified Top Bar: Cross 'X' button aligned directly with VIDEO | PHOTO | ALL tabs -->
+    <!-- Unified Top Bar: Close 'X' button aligned directly with TabLayout -->
     <RelativeLayout
         android:id="@+id/layoutTopHeader"
         android:layout_width="match_parent"
@@ -14,7 +14,7 @@
         android:paddingStart="8dp"
         android:paddingEnd="8dp">
 
-        <!-- Cross 'X' Button on the left -->
+        <!-- Close 'X' Button on the left -->
         <ImageView
             android:id="@+id/btnCloseSheet"
             android:layout_width="40dp"
@@ -26,214 +26,36 @@
             android:src="@drawable/ic_close_24"
             app:tint="#FFFFFF" />
 
-        <!-- Category Tabs Bar (VIDEO | PHOTO | ALL | AUDIO) on the same horizontal line -->
-        <LinearLayout
-            android:id="@+id/layoutCategoryTabs"
+        <!-- TabLayout for Smooth Tab Switching & Indicator Animations -->
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/tabLayoutGallery"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_toEndOf="@id/btnCloseSheet"
             android:layout_marginEnd="40dp"
-            android:orientation="horizontal"
-            android:gravity="center">
-
-            <!-- VIDEO TAB -->
-            <LinearLayout
-                android:id="@+id/tabVideo"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:clickable="true"
-                android:focusable="true"
-                android:background="?attr/selectableItemBackground">
-
-                <TextView
-                    android:id="@+id/tvTabVideo"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="VIDEO"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.05" />
-
-                <View
-                    android:id="@+id/indicatorVideo"
-                    android:layout_width="28dp"
-                    android:layout_height="3dp"
-                    android:layout_marginTop="4dp"
-                    android:background="@drawable/bg_gallery_tab_indicator"
-                    android:visibility="visible" />
-            </LinearLayout>
-
-            <!-- PHOTO TAB -->
-            <LinearLayout
-                android:id="@+id/tabPhoto"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:clickable="true"
-                android:focusable="true"
-                android:background="?attr/selectableItemBackground">
-
-                <TextView
-                    android:id="@+id/tvTabPhoto"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="PHOTO"
-                    android:textColor="#8E8E93"
-                    android:textSize="14sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.05" />
-
-                <View
-                    android:id="@+id/indicatorPhoto"
-                    android:layout_width="28dp"
-                    android:layout_height="3dp"
-                    android:layout_marginTop="4dp"
-                    android:background="@drawable/bg_gallery_tab_indicator"
-                    android:visibility="invisible" />
-            </LinearLayout>
-
-            <!-- ALL TAB -->
-            <LinearLayout
-                android:id="@+id/tabAll"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:clickable="true"
-                android:focusable="true"
-                android:background="?attr/selectableItemBackground">
-
-                <TextView
-                    android:id="@+id/tvTabAll"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="ALL"
-                    android:textColor="#8E8E93"
-                    android:textSize="14sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.05" />
-
-                <View
-                    android:id="@+id/indicatorAll"
-                    android:layout_width="28dp"
-                    android:layout_height="3dp"
-                    android:layout_marginTop="4dp"
-                    android:background="@drawable/bg_gallery_tab_indicator"
-                    android:visibility="invisible" />
-            </LinearLayout>
-
-            <!-- AUDIO TAB (Conditional for audio picking mode) -->
-            <LinearLayout
-                android:id="@+id/tabAudio"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:clickable="true"
-                android:focusable="true"
-                android:background="?attr/selectableItemBackground"
-                android:visibility="gone">
-
-                <TextView
-                    android:id="@+id/tvTabAudio"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="AUDIO"
-                    android:textColor="#8E8E93"
-                    android:textSize="14sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.05" />
-
-                <View
-                    android:id="@+id/indicatorAudio"
-                    android:layout_width="28dp"
-                    android:layout_height="3dp"
-                    android:layout_marginTop="4dp"
-                    android:background="@drawable/bg_gallery_tab_indicator"
-                    android:visibility="invisible" />
-            </LinearLayout>
-
-        </LinearLayout>
+            android:background="@android:color/transparent"
+            app:tabBackground="@android:color/transparent"
+            app:tabGravity="center"
+            app:tabMode="fixed"
+            app:tabIndicatorAnimationMode="elastic"
+            app:tabIndicatorColor="#FF2A6D"
+            app:tabIndicatorHeight="3dp"
+            app:tabIndicatorFullWidth="false"
+            app:tabIndicatorGravity="bottom"
+            app:tabSelectedTextColor="#FFFFFF"
+            app:tabTextColor="#8E8E93"
+            app:tabTextAppearance="@style/GalleryTabTextAppearance"
+            app:tabRippleColor="@android:color/transparent" />
 
     </RelativeLayout>
 
-    <!-- Media Grid Container (4 Columns) -->
-    <FrameLayout
+    <!-- ViewPager2 for Smooth Swipe Navigation between tabs -->
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/viewPagerGallery"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rvMediaGrid"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:scrollbars="vertical"
-            android:scrollbarThumbVertical="@drawable/bg_duration_badge" />
-
-        <ProgressBar
-            android:id="@+id/pbLoading"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
-            android:layout_gravity="center"
-            android:indeterminateTint="#FF2A6D"
-            android:visibility="visible" />
-
-        <LinearLayout
-            android:id="@+id/layoutEmptyContainer"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:paddingHorizontal="24dp"
-            android:visibility="gone">
-
-            <ImageView
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:src="@drawable/ic_image_24"
-                app:tint="#555555"
-                android:layout_marginBottom="12dp" />
-
-            <TextView
-                android:id="@+id/tvEmptyState"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="No media found on device."
-                android:textColor="#8E8E93"
-                android:textSize="14sp"
-                android:gravity="center" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnGrantPermission"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="Allow Access"
-                android:textColor="#FFFFFF"
-                android:backgroundTint="#FF2A6D"
-                app:cornerRadius="20dp"
-                android:visibility="gone" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnSystemPickerFallback"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Browse System Folders"
-                android:textColor="#FF2A6D" />
-        </LinearLayout>
-    </FrameLayout>
+        android:layout_weight="1"
+        android:background="#000000" />
 
     <!-- Bottom Selected Media Tray (CapCut Style) -->
     <LinearLayout
