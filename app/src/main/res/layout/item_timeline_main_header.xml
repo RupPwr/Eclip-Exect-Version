@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/timelineMainClipHeader"
+    android:layout_width="wrap_content"
+    android:layout_height="38dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:clipChildren="false">
+
+    <!-- Mute Clip Audio Button Container -->
+    <LinearLayout
+        android:id="@+id/btnTimelineMuteContainer"
+        android:layout_width="40dp"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="?attr/selectableItemBackground">
+
+        <ImageView
+            android:id="@+id/btnMute"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_volume_up_24"
+            android:padding="1dp"
+            android:scaleType="fitCenter"
+            android:contentDescription="Mute Clip Audio"
+            app:tint="@color/textColor" />
+
+        <TextView
+            android:id="@+id/tvMuteClipLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Mute"
+            android:textSize="8sp"
+            android:textColor="#8E8E93"
+            android:gravity="center" />
+    </LinearLayout>
+
+    <!-- Cover Box -->
+    <FrameLayout
+        android:id="@+id/btnCover"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/bg_cover_thumbnail"
+        android:clipToOutline="true"
+        android:clickable="true"
+        android:focusable="true">
+
+        <ImageView
+            android:id="@+id/ivCoverThumbnail"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:src="@color/cinemaBlack" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#55000000" />
+
+        <ImageView
+            android:layout_width="14dp"
+            android:layout_height="14dp"
+            android:layout_gravity="center"
+            android:layout_marginBottom="4dp"
+            android:src="@drawable/ic_edit_pencil_16"
+            app:tint="#FFFFFF" />
+
+        <TextView
+            android:id="@+id/tvCoverLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="1dp"
+            android:text="cover"
+            android:textSize="8sp"
+            android:textColor="#FFFFFF"
+            android:fontFamily="sans-serif-medium" />
+    </FrameLayout>
+
+</LinearLayout>

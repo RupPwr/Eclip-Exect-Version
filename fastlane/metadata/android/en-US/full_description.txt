@@ -1,21 +1,14 @@
-<p>LibreCuts is a free and open-source video editor for Android focused on simplicity, performance, and privacy. Edit and export watermark free videos entirely on your device.</p>
-
-<p><b>Note:</b> LibreCuts is currently in beta. You may encounter bugs, instability, or incomplete features as development continues.</p>
+<p>Eclip is a fast, powerful video editor for Android designed for simplicity, precision, and privacy. Edit, enhance, and export watermark-free videos entirely on your device.</p>
 
 <p><b>Features</b></p>
 
 <ul>
-<li><b>Trim:</b> Remove unwanted parts from the beginning or end of a video.</li>
-<li><b>Merge:</b> Combine multiple video clips and rearrange them.</li>
-<li><b>Overlays:</b> Add text, images, GIFs, and video overlays.</li>
-<li><b>Subtitles:</b> Import .srt subtitle files and reposition captions in the preview.</li>
-<li><b>Layer Management:</b> Reorder overlay layers.</li>
-<li><b>Audio:</b> Import audio, boost volume up to 200%, or mute the original audio.</li>
-<li><b>Crop:</b> Crop videos to custom aspect ratios.</li>
-<li><b>Transitions:</b> Add smooth transitions between clips.</li>
-<li><b>Speed:</b> Speed up or slow down videos.</li>
-<li><b>Adjust &amp; Filters:</b> Adjust brightness, contrast, saturation, and apply filters.</li>
-<li><b>Reverse:</b> Play videos in reverse.</li>
-<li><b>Timeline Tools:</b> Snap clips, duplicate overlays, and create freeze frames.</li>
-<li><b>Hardware Acceleration:</b> Export videos faster using supported hardware encoders.</li>
+<li><b>Trim &amp; Split:</b> Precision video cutting, segment rearranging, and frame-accurate timeline editing.</li>
+<li><b>Multi-Track Overlays:</b> Add and reorder text, stickers, images, GIFs, and PIP video overlays.</li>
+<li><b>Subtitles:</b> Import standard .srt subtitle files with interactive positioning and sizing.</li>
+<li><b>Audio Studio:</b> Multi-track audio mixing, 200% volume boosting, and live voiceover recording.</li>
+<li><b>Crop &amp; Aspect Ratios:</b> Crop videos to standard 16:9, 9:16, 1:1, or custom aspect ratios.</li>
+<li><b>Transitions &amp; Effects:</b> Real-time transition preview animations and visual color adjustments.</li>
+<li><b>Speed &amp; Motion:</b> Fast motion, smooth slow motion, freeze frames, and reverse video playback.</li>
+<li><b>Hardware Acceleration:</b> Lightning-fast export speeds powered by MediaCodec hardware encoding.</li>
 </ul>

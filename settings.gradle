@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LibreCuts"
+rootProject.name = "Eclip"
 include ':app'

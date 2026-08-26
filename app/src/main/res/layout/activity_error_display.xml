@@ -197,33 +197,12 @@
             </com.google.android.material.card.MaterialCardView>
 
             <!-- Actions Container -->
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Please check if this issue already exists before opening a new one on GitHub."
-                android:textColor="@color/iconSecondary"
-                android:textSize="13sp"
-                android:gravity="center"
-                android:layout_marginBottom="16dp" />
-
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnCopyError"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
-                android:text="Copy Error Message"
+                android:text="Copy Diagnostic Log"
                 app:icon="@drawable/ic_copy_24"
-                app:iconGravity="textStart"
-                app:backgroundTint="@color/surfaceContainerHigh"
-                android:textColor="@color/textColor"
-                app:cornerRadius="12dp"
-                android:layout_marginBottom="8dp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnReportGithub"
-                android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:text="Report on GitHub"
-                app:icon="@drawable/ic_github_24"
                 app:iconGravity="textStart"
                 app:backgroundTint="@color/colorPrimary"
                 android:textColor="@color/colorOnPrimary"

@@ -1,0 +1,501 @@
+package com.eclip.rup.leb.customviews
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.util.AttributeSet
+import android.view.MotionEvent
+import android.view.View
+import com.eclip.rup.leb.utils.performAppHapticFeedback
+
+class TrackTrimView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : View(context, attrs, defStyleAttr) {
+
+    var videoDurationMs: Long = 0L
+    var maxDurationMs: Long = 0L
+    var maxSelectionDurationMs: Long? = null
+    var startTimeMs: Long = 0L
+    var endTimeMs: Long = 0L
+    var activeStartMs: Long = 0L
+    var activeEndMs: Long = 0L
+
+    enum class DragTarget { NONE, LEFT, RIGHT, CENTER }
+
+    var onTrimChanged: ((Long, Long, DragTarget) -> Unit)? = null
+    var onTrimAdjusting: ((Long, Long) -> Unit)? = null
+    var onTrimAdjustingWithDelta: ((Long, Long, Long, Long) -> Unit)? = null
+    var onDragStateChanged: ((Boolean) -> Unit)? = null
+    var customMsPerPixel: Float? = null
+
+    var trackColor: Int = Color.parseColor("#4285F4") // Default blue
+    var trackLabel: String? = null
+    var isSelectedTrack: Boolean = false
+    var isMainVideoTrack: Boolean = false
+    var isTrimEnabled: Boolean = true
+    var trackIcon: android.graphics.drawable.Drawable? = null
+    var trackThumbnail: android.graphics.Bitmap? = null
+    var isAudioTrack: Boolean = false
+    var isPlaceholderTrack: Boolean = false
+    var onTrackClicked: (() -> Unit)? = null
+    
+    var beats: List<Long> = emptyList()
+    var internalStartMs: Long = 0L
+    var keyframes: List<Long> = emptyList()
+    var audioAmplitudes: FloatArray? = null
+
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 24f
+        textAlign = Paint.Align.LEFT
+        isFakeBoldText = true
+    }
+
+    private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val dimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#252429") // solid color to mask video frames and create a shrinking effect
+        style = Paint.Style.FILL
+    }
+    private val wavePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#40FFFFFF") // Semi-transparent white
+        style = Paint.Style.STROKE
+        strokeWidth = 2.5f
+        strokeCap = Paint.Cap.ROUND
+    }
+    private val beatPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.FILL
+    }
+    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+    }
+    private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.FILL
+    }
+    
+    private val rectF = RectF()
+    private val thumbnailRectF = RectF()
+    private val handleWidth = 16f
+
+    private val touchSlop by lazy {
+        android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    }
+    private var downTouchX = 0f
+    private var downTouchY = 0f
+    private var lastTouchX = 0f
+    private var hasDisallowedParent = false
+    private var dragTarget = DragTarget.NONE
+    
+    private var handleScaleAnimator: android.animation.ValueAnimator? = null
+    private var currentHandleScale = 1.0f
+
+    private var isDraggingHandle = false
+        set(value) {
+            if (field != value) {
+                field = value
+                val targetScale = if (value) 1.5f else 1.0f
+                handleScaleAnimator?.cancel()
+                handleScaleAnimator = android.animation.ValueAnimator.ofFloat(currentHandleScale, targetScale).apply {
+                    duration = 150
+                    addUpdateListener {
+                        currentHandleScale = it.animatedValue as Float
+                        invalidate()
+                    }
+                    start()
+                }
+                
+                if (value) {
+                    performAppHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                } else {
+                    performAppHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                }
+            }
+        }
+
+    fun setRange(videoDurationMs: Long, startTimeMs: Long, endTimeMs: Long) {
+        this.videoDurationMs = videoDurationMs
+        this.startTimeMs = startTimeMs.coerceIn(0L, videoDurationMs)
+        this.endTimeMs = endTimeMs.coerceIn(this.startTimeMs, videoDurationMs)
+        invalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        if (videoDurationMs <= 0 || width <= 0) return
+
+        val density = resources.displayMetrics.density
+        val cornerRadius = 6f * density
+        val msPerPixel = customMsPerPixel ?: (videoDurationMs.toFloat() / width)
+        val startX = startTimeMs / msPerPixel
+        val endX = endTimeMs / msPerPixel
+
+        rectF.set(startX, 0f, endX, height.toFloat())
+
+        if (isPlaceholderTrack) {
+            trackPaint.color = Color.parseColor("#16171E")
+            trackPaint.alpha = 255
+            canvas.drawRoundRect(rectF, cornerRadius, cornerRadius, trackPaint)
+            
+            borderPaint.color = Color.parseColor("#20FFFFFF")
+            borderPaint.strokeWidth = 1f * density
+            canvas.drawRoundRect(rectF, cornerRadius, cornerRadius, borderPaint)
+
+            var textStartX = startX + 12f * density
+            val iconSize = (height * 0.55f).toInt().coerceIn(12, 20)
+            val iconTop = (height - iconSize) / 2
+
+            if (trackIcon != null) {
+                trackIcon?.setBounds(textStartX.toInt(), iconTop, (textStartX + iconSize).toInt(), iconTop + iconSize)
+                trackIcon?.setTint(Color.parseColor("#8E8E93"))
+                trackIcon?.draw(canvas)
+                textStartX += iconSize + 6f * density
+            }
+
+            if (trackLabel != null) {
+                val placeholderTextPaint = Paint(textPaint).apply {
+                    color = Color.parseColor("#8E8E93")
+                    isFakeBoldText = false
+                    textSize = 10f * density
+                }
+                val textY = height / 2f - (placeholderTextPaint.descent() + placeholderTextPaint.ascent()) / 2f
+                canvas.drawText(trackLabel!!, textStartX, textY, placeholderTextPaint)
+            }
+            return
+        }
+        
+        // Draw track fill
+        if (isMainVideoTrack) {
+            if (isSelectedTrack) {
+                if (isTrimEnabled) {
+                    // Draw a thick border enclosing the active range when selected
+                    borderPaint.color = Color.parseColor("#FF4081")
+                    borderPaint.strokeWidth = 3f * density
+                    canvas.drawRect(rectF, borderPaint)
+                } else {
+                    borderPaint.color = Color.parseColor("#FF4081")
+                    borderPaint.strokeWidth = 3f * density
+                    val inset = borderPaint.strokeWidth / 2f
+                    val selRect = RectF(rectF.left + inset, rectF.top + inset, rectF.right - inset, rectF.bottom - inset)
+                    canvas.drawRect(selRect, borderPaint)
+                }
+            }
+        } else {
+            trackPaint.color = trackColor
+            trackPaint.alpha = 240
+            canvas.drawRoundRect(rectF, cornerRadius, cornerRadius, trackPaint)
+        }
+
+        // Draw Audio Wave Background
+        if (isAudioTrack) {
+            canvas.save()
+            canvas.clipRect(rectF)
+            val centerY = height / 2f
+            val maxAmplitude = height * 0.38f
+            
+            if (audioAmplitudes != null && audioAmplitudes!!.isNotEmpty()) {
+                val amps = audioAmplitudes!!
+                var x = startX + handleWidth + 2f * density
+                val waveSpacing = 3f * density
+                
+                while (x < endX - handleWidth) {
+                    val relativeTimeMs = ((x - startX) * msPerPixel).toLong()
+                    val index = ((relativeTimeMs.toFloat() / videoDurationMs) * amps.size).toInt()
+                    
+                    val ampValue = if (index in amps.indices) amps[index] else 0.0f
+                    val amplitude = maxAmplitude * ampValue
+                    
+                    if (amplitude > 1f) {
+                        canvas.drawLine(x, centerY - amplitude, x, centerY + amplitude, wavePaint)
+                    } else {
+                        canvas.drawLine(x, centerY - 1.5f * density, x, centerY + 1.5f * density, wavePaint)
+                    }
+                    x += waveSpacing
+                }
+            } else {
+                // Fallback to procedural wave if no data
+                var x = startX + handleWidth + 2f * density
+                val waveSpacing = 6f * density
+                var timeOffset = 0f
+                while (x < endX - handleWidth) {
+                    val amplitude = maxAmplitude * (0.3f + 0.7f * Math.abs(Math.sin((x + timeOffset) * 0.05).toFloat()))
+                    canvas.drawLine(x, centerY - amplitude, x, centerY + amplitude, wavePaint)
+                    x += waveSpacing
+                    timeOffset += 1f
+                }
+            }
+            canvas.restore()
+        }
+
+        // Draw Beat Markers
+        if (beats.isNotEmpty()) {
+            canvas.save()
+            canvas.clipRect(rectF)
+            val beatRadius = 2.5f * density
+            val yPos = height - 5f * density
+            for (beatTimeMs in beats) {
+                val relativeToInternalStart = beatTimeMs - internalStartMs
+                if (relativeToInternalStart >= 0) {
+                    val beatX = startX + (relativeToInternalStart / msPerPixel)
+                    if (beatX <= endX) {
+                        canvas.drawCircle(beatX, yPos, beatRadius, beatPaint)
+                    }
+                }
+            }
+            canvas.restore()
+        }
+
+        // Draw Keyframe Markers
+        if (keyframes.isNotEmpty()) {
+            canvas.save()
+            canvas.clipRect(rectF)
+            val kfPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#FFD700") // Gold color for keyframes
+                style = Paint.Style.FILL
+            }
+            val size = 8f * density
+            val halfSize = size / 2f
+            val yPos = height - 6f * density
+            val diamondPath = android.graphics.Path()
+
+            for (kfTimeMs in keyframes) {
+                val kfX = startX + (kfTimeMs / msPerPixel)
+                if (kfX >= startX && kfX <= endX) {
+                    diamondPath.reset()
+                    diamondPath.moveTo(kfX, yPos - halfSize)
+                    diamondPath.lineTo(kfX + halfSize, yPos)
+                    diamondPath.lineTo(kfX, yPos + halfSize)
+                    diamondPath.lineTo(kfX - halfSize, yPos)
+                    diamondPath.close()
+                    canvas.drawPath(diamondPath, kfPaint)
+                }
+            }
+            canvas.restore()
+        }
+        
+        // Draw track border
+        if (!isMainVideoTrack) {
+            if (isSelectedTrack) {
+                borderPaint.color = Color.parseColor("#FF4081") // Vibrant pink selection accent
+                borderPaint.strokeWidth = 2.5f * density
+                canvas.drawRoundRect(rectF, cornerRadius, cornerRadius, borderPaint)
+                
+                val selectionOverlayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.parseColor("#1AFF4081")
+                    style = Paint.Style.FILL
+                }
+                canvas.drawRoundRect(rectF, cornerRadius, cornerRadius, selectionOverlayPaint)
+            } else {
+                borderPaint.color = Color.parseColor("#26FFFFFF") // Subtle outline
+                borderPaint.strokeWidth = 1f * density
+                canvas.drawRoundRect(rectF, cornerRadius, cornerRadius, borderPaint)
+            }
+        }
+
+        // Draw Icon, Thumbnail, and Label if available
+        var textStartX = startX + handleWidth + 6f * density
+        val iconSize = (height * 0.55f).toInt().coerceIn(12, 22)
+        val iconTop = (height - iconSize) / 2
+
+        if (trackIcon != null) {
+            trackIcon?.setBounds(textStartX.toInt(), iconTop, (textStartX + iconSize).toInt(), iconTop + iconSize)
+            trackIcon?.setTint(Color.WHITE)
+            trackIcon?.draw(canvas)
+            textStartX += iconSize + 6f * density
+        }
+
+        if (trackThumbnail != null) {
+            val thumbWidth = (iconSize * 1.4f)
+            thumbnailRectF.set(textStartX, iconTop.toFloat(), textStartX + thumbWidth, iconTop.toFloat() + iconSize)
+            canvas.drawBitmap(trackThumbnail!!, null, thumbnailRectF, trackPaint)
+            textStartX += thumbWidth + 6f * density
+        }
+
+        if (trackLabel != null) {
+            val padding = 8f * density
+            val maxTextWidth = (endX - startX) - (textStartX - startX) - handleWidth - padding
+            if (maxTextWidth > 12f) {
+                val textPaintObj = android.text.TextPaint(textPaint).apply {
+                    textSize = 10f * density
+                }
+                val textToDraw = android.text.TextUtils.ellipsize(
+                    trackLabel,
+                    textPaintObj,
+                    maxTextWidth,
+                    android.text.TextUtils.TruncateAt.END
+                ).toString()
+                
+                val textY = height / 2f - (textPaintObj.descent() + textPaintObj.ascent()) / 2f
+                canvas.drawText(textToDraw, textStartX, textY, textPaintObj)
+            }
+        }
+
+        if (isTrimEnabled) {
+            val currentHandleWidth = handleWidth * currentHandleScale
+            if (isMainVideoTrack) {
+                handlePaint.color = Color.parseColor("#FF4081")
+            } else {
+                handlePaint.color = Color.WHITE
+            }
+            // Draw left handle
+            canvas.drawRect(startX, 0f, startX + currentHandleWidth, height.toFloat(), handlePaint)
+            // Draw right handle
+            canvas.drawRect(endX - currentHandleWidth, 0f, endX, height.toFloat(), handlePaint)
+
+            // Draw vertical grip line on the handles
+            val gripPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#4D000000") // Subtle dark overlay for grips
+                style = Paint.Style.STROKE
+                strokeWidth = 1.5f * density
+            }
+            // Left handle grip line
+            val leftMidX = startX + currentHandleWidth / 2f
+            canvas.drawLine(leftMidX, height * 0.3f, leftMidX, height * 0.7f, gripPaint)
+            
+            // Right handle grip line
+            val rightMidX = endX - currentHandleWidth / 2f
+            canvas.drawLine(rightMidX, height * 0.3f, rightMidX, height * 0.7f, gripPaint)
+        }
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (videoDurationMs <= 0) return false
+
+        val msPerPixel = customMsPerPixel ?: (videoDurationMs.toFloat() / width)
+        val startX = startTimeMs / msPerPixel
+        val endX = endTimeMs / msPerPixel
+        val density = resources.displayMetrics.density
+        val handleTouchMargin = 20f * density
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downTouchX = event.x
+                downTouchY = event.y
+                lastTouchX = event.x
+                hasDisallowedParent = false
+                isDraggingHandle = false
+
+                dragTarget = if (isTrimEnabled) {
+                    when {
+                        event.x >= startX - handleTouchMargin && event.x <= startX + handleWidth + handleTouchMargin -> DragTarget.LEFT
+                        event.x >= endX - handleWidth - handleTouchMargin && event.x <= endX + handleTouchMargin -> DragTarget.RIGHT
+                        else -> DragTarget.CENTER
+                    }
+                } else {
+                    DragTarget.CENTER
+                }
+                // Return true so we receive MOVE/UP, but do NOT disallow intercept here so parent HorizontalScrollView / ScrollView can scroll freely.
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = event.x - downTouchX
+                val dy = event.y - downTouchY
+                val absDx = Math.abs(dx)
+                val absDy = Math.abs(dy)
+                val stepDx = event.x - lastTouchX
+                val dtMs = (stepDx * msPerPixel).toLong()
+
+                if (isTrimEnabled && (dragTarget == DragTarget.LEFT || dragTarget == DragTarget.RIGHT)) {
+                    if (absDx > touchSlop && absDx > absDy) {
+                        // User is dragging a trim handle horizontally!
+                        if (!hasDisallowedParent) {
+                            hasDisallowedParent = true
+                            isDraggingHandle = true
+                            parent?.requestDisallowInterceptTouchEvent(true)
+                            onDragStateChanged?.invoke(true)
+                        }
+
+                        when (dragTarget) {
+                            DragTarget.LEFT -> {
+                                val minStart = 0L
+                                val maxStart = endTimeMs - 100L
+                                if (maxSelectionDurationMs != null && endTimeMs - (startTimeMs + dtMs) > maxSelectionDurationMs!!) {
+                                    startTimeMs = endTimeMs - maxSelectionDurationMs!!
+                                } else {
+                                    startTimeMs = (startTimeMs + dtMs).coerceIn(minStart, maxStart.coerceAtLeast(minStart))
+                                }
+                            }
+                            DragTarget.RIGHT -> {
+                                val minEnd = startTimeMs + 100L
+                                val limit = if (maxDurationMs > 0L) maxDurationMs else videoDurationMs
+                                if (maxSelectionDurationMs != null && (endTimeMs + dtMs) - startTimeMs > maxSelectionDurationMs!!) {
+                                    endTimeMs = startTimeMs + maxSelectionDurationMs!!
+                                } else {
+                                    endTimeMs = (endTimeMs + dtMs).coerceIn(minEnd, limit.coerceAtLeast(minEnd))
+                                }
+                            }
+                            else -> {}
+                        }
+
+                        lastTouchX = event.x
+                        invalidate()
+                        onTrimAdjusting?.invoke(startTimeMs, endTimeMs)
+                        onTrimAdjustingWithDelta?.invoke(
+                            startTimeMs,
+                            endTimeMs,
+                            if (dragTarget == DragTarget.LEFT) dtMs else 0L,
+                            if (dragTarget == DragTarget.RIGHT) dtMs else 0L
+                        )
+                        return true
+                    } else if (absDy > touchSlop && absDy > absDx && !hasDisallowedParent) {
+                        // User is swiping vertically -> let ScrollView intercept
+                        return false
+                    }
+                    return true
+                } else {
+                    // Body touch: keep receiving until parent HorizontalScrollView or ScrollView intercepts
+                    return true
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                val dx = event.x - downTouchX
+                val dy = event.y - downTouchY
+                val absDx = Math.abs(dx)
+                val absDy = Math.abs(dy)
+
+                if (hasDisallowedParent && isDraggingHandle) {
+                    onTrimChanged?.invoke(startTimeMs, endTimeMs, dragTarget)
+                } else if (!isDraggingHandle && absDx < touchSlop && absDy < touchSlop) {
+                    // Tap on track
+                    performClick()
+                    onTrackClicked?.invoke()
+                }
+
+                if (hasDisallowedParent) {
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    onDragStateChanged?.invoke(false)
+                }
+                dragTarget = DragTarget.NONE
+                isDraggingHandle = false
+                hasDisallowedParent = false
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                if (hasDisallowedParent) {
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    onDragStateChanged?.invoke(false)
+                }
+                dragTarget = DragTarget.NONE
+                isDraggingHandle = false
+                hasDisallowedParent = false
+                return true
+            }
+        }
+        return super.onTouchEvent(event)
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
+    }
+}

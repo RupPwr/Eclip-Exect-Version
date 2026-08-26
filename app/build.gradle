@@ -10,7 +10,7 @@ aboutLibraries {
 }
 
 android {
-    namespace 'com.tharunbirla.librecuts'
+    namespace 'com.eclip.rup.leb'
     compileSdk 34
 
     androidResources {
@@ -22,11 +22,11 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.tharunbirla.librecuts"
+        applicationId "com.eclip.rup.leb"
         minSdk 26
-        targetSdk 34
+        targetSdk 36
         versionCode project.hasProperty('versionCode') ? project.property('versionCode').toInteger() : 10
-        versionName "1.0-beta7"
+        versionName "1.1.1"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

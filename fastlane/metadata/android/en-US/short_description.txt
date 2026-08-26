@@ -1,1 +1,1 @@
-LibreCuts is a free, open-source privacy friendly video editor for Android.
+Eclip is a powerful, watermark-free video editor for Android.
