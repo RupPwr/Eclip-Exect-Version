@@ -30,6 +30,7 @@ class DraftsAdapter(
         val vSelectedOverlay: View = view.findViewById(R.id.vDraftSelectedOverlay)
         val tvTitle: TextView = view.findViewById(R.id.tvDraftTitle)
         val tvDuration: TextView = view.findViewById(R.id.tvDraftDuration)
+        val layoutActionContainer: View = view.findViewById(R.id.layoutDraftActionContainer)
         val btnOptions: ImageView = view.findViewById(R.id.btnDraftOptions)
         val ivCheck: ImageView = view.findViewById(R.id.ivDraftCheck)
     }
@@ -66,6 +67,7 @@ class DraftsAdapter(
 
         if (isSelectionMode) {
             holder.btnOptions.visibility = View.GONE
+            holder.btnOptions.setOnClickListener(null)
             holder.ivCheck.visibility = View.VISIBLE
 
             val isSelected = selectedDraftIds.contains(draft.id)
@@ -79,22 +81,27 @@ class DraftsAdapter(
                 holder.ivCheck.setImageDrawable(null)
             }
 
-            holder.root.setOnClickListener {
+            val toggleAction = View.OnClickListener {
                 toggleSelection(draft)
             }
-            holder.ivCheck.setOnClickListener {
-                toggleSelection(draft)
-            }
+            holder.root.setOnClickListener(toggleAction)
+            holder.ivCheck.setOnClickListener(toggleAction)
+            holder.layoutActionContainer.setOnClickListener(toggleAction)
         } else {
+            holder.layoutActionContainer.setOnClickListener(null)
+            holder.ivCheck.setOnClickListener(null)
             holder.btnOptions.visibility = View.VISIBLE
             holder.ivCheck.visibility = View.GONE
             holder.vSelectedOverlay.visibility = View.GONE
 
             holder.root.setBounceClickListener {
-                onDraftClick(draft)
+                if (!isSelectionMode) {
+                    onDraftClick(draft)
+                }
             }
 
             holder.btnOptions.setOnClickListener { v ->
+                if (isSelectionMode) return@setOnClickListener
                 val popup = PopupMenu(v.context, v)
                 popup.menu.add(0, 1, 0, R.string.str_open)
                 popup.menu.add(0, 2, 1, R.string.str_delete_draft)

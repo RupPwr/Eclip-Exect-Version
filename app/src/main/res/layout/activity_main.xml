@@ -207,54 +207,64 @@
         </LinearLayout>
     </ScrollView>
 
-    <!-- Settings Page Content -->
-    <ScrollView
+    <!-- Settings Page Content Root (Fixed Header + Scrollable Options) -->
+    <RelativeLayout
         android:id="@+id/layoutSettingsContent"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_below="@id/layoutTopHeader"
-        android:visibility="gone"
-        android:paddingHorizontal="20dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="40dp"
-        android:clipToPadding="false"
-        android:overScrollMode="never"
-        android:scrollbars="none">
+        android:background="@color/background"
+        android:visibility="gone">
 
-        <LinearLayout
+        <!-- Fixed Settings Top Navigation Bar (Back Arrow + Title) -->
+        <RelativeLayout
+            android:id="@+id/layoutSettingsHeader"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
+            android:layout_height="64dp"
+            android:paddingHorizontal="20dp"
+            android:background="@color/background">
 
-            <!-- Settings Top Navigation Bar (Back Arrow + Title) -->
+            <ImageView
+                android:id="@+id/btnBackFromSettings"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:focusable="true"
+                android:padding="8dp"
+                android:src="@drawable/ic_back_24"
+                app:tint="@color/textColor" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_toEndOf="@id/btnBackFromSettings"
+                android:layout_centerVertical="true"
+                android:layout_marginStart="12dp"
+                android:fontFamily="sans-serif-bold"
+                android:text="@string/str_settings"
+                android:textColor="@color/textColor"
+                android:textSize="22sp" />
+        </RelativeLayout>
+
+        <!-- Scrollable Settings Options Content -->
+        <ScrollView
+            android:id="@+id/scrollSettingsContent"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_below="@id/layoutSettingsHeader"
+            android:paddingHorizontal="20dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="40dp"
+            android:clipToPadding="false"
+            android:overScrollMode="never"
+            android:scrollbars="none">
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:layout_marginTop="4dp"
-                android:layout_marginBottom="16dp">
-
-                <ImageView
-                    android:id="@+id/btnBackFromSettings"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:padding="6dp"
-                    android:src="@drawable/ic_back_24"
-                    app:tint="@color/textColor" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="12dp"
-                    android:fontFamily="sans-serif-medium"
-                    android:text="@string/str_settings"
-                    android:textColor="@color/textColor"
-                    android:textSize="22sp" />
-            </LinearLayout>
+                android:orientation="vertical">
 
             <!-- General Settings Bento Card -->
             <LinearLayout
@@ -670,6 +680,7 @@
 
         </LinearLayout>
     </ScrollView>
+    </RelativeLayout>
 
     <!-- Drafts Multi-Selection Action Bar (Select All | Delete) -->
     <LinearLayout
