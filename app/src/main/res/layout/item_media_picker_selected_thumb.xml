@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="64dp"
+    android:layout_height="64dp"
+    android:layout_marginEnd="8dp">
+
+    <!-- Thumbnail Container -->
+    <FrameLayout
+        android:layout_width="58dp"
+        android:layout_height="58dp"
+        android:layout_gravity="bottom|start">
+
+        <com.google.android.material.imageview.ShapeableImageView
+            android:id="@+id/ivSelectedThumb"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:background="#222222"
+            app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Small" />
+
+        <!-- Bottom gradient for text readability -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="24dp"
+            android:layout_gravity="bottom"
+            android:background="@drawable/bg_media_gradient" />
+
+        <!-- Duration text -->
+        <TextView
+            android:id="@+id/tvSelectedDuration"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_marginStart="3dp"
+            android:layout_marginBottom="2dp"
+            android:textColor="#FFFFFF"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <!-- Scissors icon for video -->
+        <ImageView
+            android:id="@+id/ivSelectedScissors"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="3dp"
+            android:layout_marginBottom="3dp"
+            android:src="@drawable/ic_scissors_white_14"
+            android:visibility="gone" />
+
+    </FrameLayout>
+
+    <!-- Close / Remove button at top-right corner -->
+    <FrameLayout
+        android:id="@+id/btnRemoveSelected"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_gravity="top|end"
+        android:background="@drawable/bg_gallery_selected_close"
+        android:elevation="4dp">
+
+        <ImageView
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:layout_gravity="center"
+            android:src="@drawable/ic_close_24"
+            app:tint="#000000" />
+    </FrameLayout>
+
+</FrameLayout>

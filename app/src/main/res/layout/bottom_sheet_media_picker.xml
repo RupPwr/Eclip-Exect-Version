@@ -4,116 +4,167 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/colorSurface"
-    android:paddingStart="8dp"
-    android:paddingEnd="8dp"
-    android:paddingBottom="16dp">
+    android:background="#000000">
 
-    <!-- Bottom Sheet Drag Handle -->
-    <View
-        android:layout_width="36dp"
-        android:layout_height="4dp"
-        android:layout_gravity="center_horizontal"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="8dp"
-        android:background="@drawable/bg_duration_badge"
-        android:alpha="0.5" />
-
-    <!-- CapCut / VN Style Header Bar -->
+    <!-- Top Navigation Bar: Clean close button without unnecessary items/spacing -->
     <RelativeLayout
+        android:id="@+id/layoutTopHeader"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingStart="4dp"
-        android:paddingEnd="4dp"
-        android:layout_marginBottom="8dp">
-
-        <!-- Album Selector Dropdown Button -->
-        <LinearLayout
-            android:id="@+id/btnAlbumDropdown"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_alignParentStart="true"
-            android:layout_centerVertical="true"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:background="?attr/selectableItemBackground"
-            android:padding="6dp">
-
-            <TextView
-                android:id="@+id/tvSelectedAlbumName"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="All Videos"
-                android:textColor="@color/colorOnSurface"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
-            <ImageView
-                android:layout_width="20dp"
-                android:layout_height="20dp"
-                android:layout_marginStart="4dp"
-                android:src="@drawable/ic_chevron_right_24"
-                android:rotation="90"
-                app:tint="@color/colorOnSurface" />
-        </LinearLayout>
+        android:layout_height="48dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp">
 
         <ImageView
             android:id="@+id/btnCloseSheet"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_alignParentEnd="true"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_alignParentStart="true"
             android:layout_centerVertical="true"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:padding="4dp"
+            android:padding="8dp"
             android:src="@drawable/ic_close_24"
-            app:tint="@color/iconSecondary" />
+            app:tint="#FFFFFF" />
+
     </RelativeLayout>
 
-    <!-- Filter Tabs (Videos, Photos, Audio) -->
-    <HorizontalScrollView
-        android:id="@+id/layoutTabsContainer"
+    <!-- Sleek Category Tabs Bar (VIDEO | PHOTO | ALL | AUDIO) -->
+    <LinearLayout
+        android:id="@+id/layoutCategoryTabs"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:scrollbars="none"
-        android:layout_marginBottom="8dp"
-        android:paddingStart="4dp"
-        android:visibility="gone">
+        android:layout_height="42dp"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingHorizontal="16dp"
+        android:layout_marginBottom="4dp">
 
-        <com.google.android.material.chip.ChipGroup
-            android:id="@+id/chipGroupFilter"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            app:singleSelection="true">
+        <!-- VIDEO TAB -->
+        <LinearLayout
+            android:id="@+id/tabVideo"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground">
 
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chipVideos"
-                style="@style/Widget.Material3.Chip.Filter"
+            <TextView
+                android:id="@+id/tvTabVideo"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:checked="true"
-                android:text="Videos"
-                app:chipIcon="@drawable/ic_play_24" />
+                android:text="VIDEO"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.05" />
 
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chipImages"
-                style="@style/Widget.Material3.Chip.Filter"
+            <View
+                android:id="@+id/indicatorVideo"
+                android:layout_width="28dp"
+                android:layout_height="3dp"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/bg_gallery_tab_indicator"
+                android:visibility="visible" />
+        </LinearLayout>
+
+        <!-- PHOTO TAB -->
+        <LinearLayout
+            android:id="@+id/tabPhoto"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground">
+
+            <TextView
+                android:id="@+id/tvTabPhoto"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Photos"
-                app:chipIcon="@drawable/ic_image_24" />
+                android:text="PHOTO"
+                android:textColor="#8E8E93"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.05" />
 
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chipAudio"
-                style="@style/Widget.Material3.Chip.Filter"
+            <View
+                android:id="@+id/indicatorPhoto"
+                android:layout_width="28dp"
+                android:layout_height="3dp"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/bg_gallery_tab_indicator"
+                android:visibility="invisible" />
+        </LinearLayout>
+
+        <!-- ALL TAB -->
+        <LinearLayout
+            android:id="@+id/tabAll"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground">
+
+            <TextView
+                android:id="@+id/tvTabAll"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Audio"
-                app:chipIcon="@drawable/ic_audio_24" />
+                android:text="ALL"
+                android:textColor="#8E8E93"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.05" />
 
-        </com.google.android.material.chip.ChipGroup>
-    </HorizontalScrollView>
+            <View
+                android:id="@+id/indicatorAll"
+                android:layout_width="28dp"
+                android:layout_height="3dp"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/bg_gallery_tab_indicator"
+                android:visibility="invisible" />
+        </LinearLayout>
 
-    <!-- Main Media Grid -->
+        <!-- AUDIO TAB (Conditional for audio picking mode) -->
+        <LinearLayout
+            android:id="@+id/tabAudio"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvTabAudio"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="AUDIO"
+                android:textColor="#8E8E93"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.05" />
+
+            <View
+                android:id="@+id/indicatorAudio"
+                android:layout_width="28dp"
+                android:layout_height="3dp"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/bg_gallery_tab_indicator"
+                android:visibility="invisible" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Media Grid Container (4 Columns) -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -124,13 +175,15 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:scrollbars="vertical" />
+            android:scrollbars="vertical"
+            android:scrollbarThumbVertical="@drawable/bg_duration_badge" />
 
         <ProgressBar
             android:id="@+id/pbLoading"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
             android:layout_gravity="center"
+            android:indeterminateTint="#FF2A6D"
             android:visibility="visible" />
 
         <LinearLayout
@@ -140,14 +193,22 @@
             android:layout_gravity="center"
             android:orientation="vertical"
             android:gravity="center"
+            android:paddingHorizontal="24dp"
             android:visibility="gone">
+
+            <ImageView
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_image_24"
+                app:tint="#555555"
+                android:layout_marginBottom="12dp" />
 
             <TextView
                 android:id="@+id/tvEmptyState"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="No videos found on device."
-                android:textColor="@color/iconSecondary"
+                android:text="No media found on device."
+                android:textColor="#8E8E93"
                 android:textSize="14sp"
                 android:gravity="center" />
 
@@ -155,21 +216,112 @@
                 android:id="@+id/btnGrantPermission"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="Allow Access to All Videos"
+                android:layout_marginTop="16dp"
+                android:text="Allow Access"
                 android:textColor="#FFFFFF"
-                app:cornerRadius="8dp"
+                android:backgroundTint="#FF2A6D"
+                app:cornerRadius="20dp"
                 android:visibility="gone" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnSystemPickerFallback"
-                style="@style/Widget.Material3.Button.OutlinedButton"
+                style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:text="Browse System Folders"
-                app:cornerRadius="8dp" />
+                android:textColor="#FF2A6D" />
         </LinearLayout>
     </FrameLayout>
+
+    <!-- Bottom Selected Media Tray (CapCut Style) -->
+    <LinearLayout
+        android:id="@+id/layoutSelectedTray"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#121215"
+        android:paddingTop="10dp"
+        android:paddingBottom="12dp"
+        android:paddingHorizontal="14dp"
+        android:visibility="gone">
+
+        <!-- Top row of tray: Trash icon + Count text + Pink Next FAB -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <ImageView
+                    android:id="@+id/btnDeleteSelected"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:padding="6dp"
+                    android:src="@drawable/ic_delete_24"
+                    app:tint="#FFFFFF" />
+
+                <TextView
+                    android:id="@+id/tvSelectedSummary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="Selected 0 Video(s)/0 Photo(s)"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Floating circular pink action button (Next / Confirm) -->
+            <FrameLayout
+                android:id="@+id/btnConfirmSelection"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:background="@drawable/bg_gallery_fab_next"
+                android:clickable="true"
+                android:focusable="true"
+                android:elevation="6dp">
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_arrow_forward_24"
+                    app:tint="#FFFFFF" />
+            </FrameLayout>
+
+        </RelativeLayout>
+
+        <!-- Horizontal list of selected thumbnail previews -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvSelectedItems"
+            android:layout_width="match_parent"
+            android:layout_height="66dp"
+            android:orientation="horizontal"
+            android:clipToPadding="false"
+            android:layout_marginBottom="4dp" />
+
+        <!-- Subtitle hint: Long press and drag to swap order -->
+        <TextView
+            android:id="@+id/tvSwapHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Long press and drag to swap order"
+            android:textColor="#666666"
+            android:textSize="11sp"
+            android:gravity="center"
+            android:layout_marginTop="2dp" />
+
+    </LinearLayout>
 
 </LinearLayout>
