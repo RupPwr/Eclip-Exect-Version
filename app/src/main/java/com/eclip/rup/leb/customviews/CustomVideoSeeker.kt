@@ -54,6 +54,13 @@ class CustomVideoSeeker @JvmOverloads constructor(
     private var seekPosition = 0f   // 0..1
     private var videoDuration = 0L  // ms
     var onSeekListener: ((Float) -> Unit)? = null
+    var customPlayheadX: Float? = null
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidate()
+            }
+        }
 
     // ── Handle geometry ───────────────────────────────────────────────────────
     private val handleRect = RectF()
@@ -62,8 +69,8 @@ class CustomVideoSeeker @JvmOverloads constructor(
         super.onDraw(canvas)
 
         val density = resources.displayMetrics.density
-        // Playhead is anchored at the exact center of the timeline
-        val seekX = width / 2f
+        // Playhead is anchored at custom position or exact center of the timeline
+        val seekX = customPlayheadX ?: (width / 2f)
         val topCapHeight = 7f * density
         val topCapWidth = 8f * density
         

@@ -5,55 +5,100 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.IBinder
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
-import android.widget.Toast
 import androidx.core.app.NotificationCompat
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.core.app.ServiceCompat
+import com.antonkarpenko.ffmpegkit.FFmpegKit
+import com.antonkarpenko.ffmpegkit.ReturnCode
+import com.eclip.rup.leb.ExportActivity
 import com.eclip.rup.leb.MainActivity
 import com.eclip.rup.leb.R
+import com.eclip.rup.leb.utils.AppCachePolicyManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
+/**
+ * Dedicated ForegroundService for running final video export renders.
+ * Guarantees that long-running renders (5-15+ minutes) survive activity backgrounding,
+ * screen-off states, and low-memory conditions without being killed by the Android OS.
+ */
 class ExportService : Service() {
 
-    private val TAG = "ExportService"
-    private val CHANNEL_ID = "ExportChannel"
-    private val NOTIFICATION_ID = 1001
+    sealed class ExportStatus {
+        object Idle : ExportStatus()
+        object Starting : ExportStatus()
+        data class Progress(val progress: Int) : ExportStatus()
+        data class Success(val savedUri: Uri) : ExportStatus()
+        data class Failure(val error: String) : ExportStatus()
+        object Cancelled : ExportStatus()
+    }
+
+    companion object {
+        private const val TAG = "ExportService"
+        private const val CHANNEL_ID = "VideoExportChannel"
+        private const val NOTIFICATION_ID = 2001
+        private const val COMPLETION_NOTIFICATION_ID = 2002
+
+        const val EXTRA_SOURCE_URI = "extra_source_uri"
+        const val EXTRA_PROJECT_NAME = "extra_project_name"
+        const val EXTRA_RESOLUTION = "extra_resolution"
+        const val EXTRA_FPS = "extra_fps"
+        const val EXTRA_IS_AUDIO_ONLY = "extra_is_audio_only"
+        const val EXTRA_COMMAND = "extra_command"
+        const val EXTRA_TEMP_OUTPUT_PATH = "extra_temp_output_path"
+        const val EXTRA_CONCAT_FILE_PATH = "extra_concat_file_path"
+        const val EXTRA_TOTAL_DURATION_SECS = "extra_total_duration_secs"
+
+        private val _exportStatus = MutableStateFlow<ExportStatus>(ExportStatus.Idle)
+        val exportStatus: StateFlow<ExportStatus> = _exportStatus.asStateFlow()
+
+        @Volatile
+        private var activeJob: Job? = null
+
+        /**
+         * Cancels the currently running export job and native FFmpeg sessions.
+         */
+        fun cancelExport() {
+            activeJob?.cancel()
+            activeJob = null
+            try {
+                FFmpegKit.cancel()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error cancelling FFmpegKit: ${e.message}")
+            }
+            _exportStatus.value = ExportStatus.Cancelled
+        }
+    }
 
     private val serviceJob = Job()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
     private lateinit var ffmpegEngine: FFmpegRenderEngine
 
-    companion object {
-        const val ACTION_EXPORT_PROGRESS = "com.eclip.rup.leb.ACTION_EXPORT_PROGRESS"
-        const val ACTION_EXPORT_SUCCESS = "com.eclip.rup.leb.ACTION_EXPORT_SUCCESS"
-        const val ACTION_EXPORT_FAILURE = "com.eclip.rup.leb.ACTION_EXPORT_FAILURE"
-
-        const val EXTRA_PROGRESS = "extra_progress"
-        const val EXTRA_SAVED_URI = "extra_saved_uri"
-        const val EXTRA_ERROR = "extra_error"
-
-        const val EXTRA_COMMAND = "extra_command"
-        const val EXTRA_TEMP_OUTPUT_PATH = "extra_temp_output_path"
-        const val EXTRA_CONCAT_FILE_PATH = "extra_concat_file_path"
-        const val EXTRA_TOTAL_DURATION_SECS = "extra_total_duration_secs"
-        const val EXTRA_IS_AUDIO_ONLY = "extra_is_audio_only"
-    }
-
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
         ffmpegEngine = FFmpegRenderEngine(this)
+        createNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -62,64 +107,144 @@ class ExportService : Service() {
             return START_NOT_STICKY
         }
 
-        val command = intent.getStringExtra(EXTRA_COMMAND) ?: return START_NOT_STICKY
-        val tempOutputPath = intent.getStringExtra(EXTRA_TEMP_OUTPUT_PATH) ?: return START_NOT_STICKY
+        val command = intent.getStringExtra(EXTRA_COMMAND)
+        val tempOutputPath = intent.getStringExtra(EXTRA_TEMP_OUTPUT_PATH)
         val concatFilePath = intent.getStringExtra(EXTRA_CONCAT_FILE_PATH)
         val durationSecs = intent.getDoubleExtra(EXTRA_TOTAL_DURATION_SECS, 0.0)
         val isAudioOnly = intent.getBooleanExtra(EXTRA_IS_AUDIO_ONLY, false)
+        val projectName = intent.getStringExtra(EXTRA_PROJECT_NAME) ?: "Video"
+        val resolution = intent.getIntExtra(EXTRA_RESOLUTION, 1080)
+        if (resolution > 1080) {
+            _exportStatus.value = ExportStatus.Failure("Resolution above 1080p is not supported.")
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
-        startForeground(NOTIFICATION_ID, buildNotification(0, "Exporting..."))
+        if (command == null || tempOutputPath == null || durationSecs <= 0.0) {
+            _exportStatus.value = ExportStatus.Failure("Missing export parameters or invalid duration.")
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
-        serviceScope.launch {
+        // 1. Promote to Foreground Service with ongoing notification
+        val initialNotification = buildNotification(0, "Exporting $projectName...")
+        ServiceCompat.startForeground(
+            this,
+            NOTIFICATION_ID,
+            initialNotification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        )
+
+        _exportStatus.value = ExportStatus.Starting
+        AppCachePolicyManager.setHeavyLoadActive(true)
+
+        // 2. Launch export execution on IO dispatcher
+        val job = serviceScope.launch {
+            var lastProgressTime = 0L
+            var lastReportedProgress = -1
+
+            val tempFile = File(tempOutputPath)
+            val concatFile = concatFilePath?.let { File(it) }
+
             try {
                 val result = ffmpegEngine.exportFinal(
                     ffmpegCommand = command,
                     totalDurationSecs = durationSecs,
                     onProgress = { progress ->
-                        updateNotification(progress, "Exporting...")
-                        broadcastProgress(progress)
+                        // Conflated and throttled UI dispatch (max once per 150ms)
+                        val now = SystemClock.uptimeMillis()
+                        if (progress != lastReportedProgress && (now - lastProgressTime >= 150L || progress == 100)) {
+                            lastProgressTime = now
+                            lastReportedProgress = progress
+                            _exportStatus.value = ExportStatus.Progress(progress)
+                            updateNotification(progress, "Exporting $projectName...")
+                        }
                     }
                 )
 
-                val tempFile = File(tempOutputPath)
-                val concatFile = concatFilePath?.let { File(it) }
-
                 when (result) {
                     is FFmpegRenderEngine.RenderResult.Success -> {
+                        // Validate output file duration and stream integrity
+                        val isValidMedia = if (tempFile.exists() && tempFile.length() > 0) {
+                            val retriever = MediaMetadataRetriever()
+                            try {
+                                retriever.setDataSource(tempFile.absolutePath)
+                                val extractedDurMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                                val hasVideo = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO)
+                                if (isAudioOnly) {
+                                    extractedDurMs > 0L
+                                } else {
+                                    extractedDurMs > 0L && hasVideo == "yes"
+                                }
+                            } catch (e: Exception) {
+                                tempFile.length() > 1024
+                            } finally {
+                                try { retriever.release() } catch (_: Exception) {}
+                            }
+                        } else false
+
+                        if (!isValidMedia) {
+                            if (tempFile.exists()) tempFile.delete()
+                            if (concatFile?.exists() == true) concatFile.delete()
+                            _exportStatus.value = ExportStatus.Failure("Export generated zero-duration video.")
+                            showCompletionNotification("Export Failed", "Export generated zero-duration video.", null)
+                            return@launch
+                        }
+
+                        // Atomic save: temp file -> final gallery destination
                         val savedUri = saveVideoToGallery(tempFile, isAudioOnly)
+
+                        if (tempFile.exists()) tempFile.delete()
+                        if (concatFile?.exists() == true) concatFile.delete()
+
                         if (savedUri != null) {
-                            showCompletionNotification("Export Complete", "Video saved to gallery", savedUri)
-                            broadcastSuccess(savedUri.toString())
-                            Log.d(TAG, "Export successful: $savedUri")
+                            _exportStatus.value = ExportStatus.Success(savedUri)
+                            showCompletionNotification("Export Complete", "Saved to gallery", savedUri)
+                            Log.d(TAG, "Export completed successfully: $savedUri")
                         } else {
-                            showCompletionNotification("Export Failed", "Failed to save video to gallery", null)
-                            broadcastFailure("Failed to save video to gallery")
+                            _exportStatus.value = ExportStatus.Failure("Failed to save media to gallery.")
+                            showCompletionNotification("Export Failed", "Failed to save media to gallery.", null)
                         }
                     }
+
                     is FFmpegRenderEngine.RenderResult.Failure -> {
-                        showCompletionNotification("Export Failed", "Error during rendering", null)
-                        broadcastFailure(result.error)
+                        if (tempFile.exists()) tempFile.delete()
+                        if (concatFile?.exists() == true) concatFile.delete()
+                        val displayMsg = result.userMessage ?: "Export failed due to a technical error."
+                        _exportStatus.value = ExportStatus.Failure(displayMsg)
+                        showCompletionNotification("Export Failed", displayMsg, null)
                         Log.e(TAG, "Export failed: ${result.error}")
                     }
+
                     is FFmpegRenderEngine.RenderResult.Cancelled -> {
-                        showCompletionNotification("Export Cancelled", "The export was cancelled", null)
-                        broadcastFailure("Export cancelled")
+                        if (tempFile.exists()) tempFile.delete()
+                        if (concatFile?.exists() == true) concatFile.delete()
+                        _exportStatus.value = ExportStatus.Cancelled
                     }
                 }
-
-                // Cleanup temp files
-                if (tempFile.exists()) tempFile.delete()
-                if (concatFile?.exists() == true) concatFile.delete()
-
             } catch (e: Exception) {
-                Log.e(TAG, "Export exception", e)
-                showCompletionNotification("Export Failed", e.message ?: "Unknown error", null)
-                broadcastFailure(e.message ?: "Unknown error")
+                if (e is CancellationException) {
+                    _exportStatus.value = ExportStatus.Cancelled
+                } else {
+                    Log.e(TAG, "Export exception", e)
+                    _exportStatus.value = ExportStatus.Failure(e.message ?: "Unknown error")
+                    showCompletionNotification("Export Failed", e.message ?: "Unknown error", null)
+                }
             } finally {
+                withContext(NonCancellable) {
+                    if (tempFile.exists() && _exportStatus.value !is ExportStatus.Success) {
+                        tempFile.delete()
+                    }
+                    if (concatFile?.exists() == true && _exportStatus.value !is ExportStatus.Success) {
+                        concatFile.delete()
+                    }
+                }
+                AppCachePolicyManager.setHeavyLoadActive(false)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
         }
+        activeJob = job
 
         return START_NOT_STICKY
     }
@@ -129,15 +254,18 @@ class ExportService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Video Export",
-                NotificationManager.IMPORTANCE_DEFAULT
-            )
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Shows progress of exporting videos and media files"
+                setShowBadge(false)
+            }
             val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            manager?.createNotificationChannel(channel)
         }
     }
 
     private fun buildNotification(progress: Int, title: String): Notification {
-        val intent = Intent(this, MainActivity::class.java).apply {
+        val intent = Intent(this, ExportActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
@@ -146,17 +274,18 @@ class ExportService : Service() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
-            .setContentText(if (progress > 0) "$progress%" else "Starting...")
-            .setSmallIcon(R.drawable.ic_save_24)
+            .setContentText(if (progress > 0) "$progress%" else "Preparing...")
+            .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setProgress(100, progress, progress == 0)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .build()
     }
 
     private fun updateNotification(progress: Int, title: String) {
         val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(NOTIFICATION_ID, buildNotification(progress, title))
+        manager?.notify(NOTIFICATION_ID, buildNotification(progress, title))
     }
 
     private fun showCompletionNotification(title: String, message: String, videoUri: Uri?) {
@@ -176,45 +305,24 @@ class ExportService : Service() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(message)
-            .setSmallIcon(R.drawable.ic_check_24)
+            .setSmallIcon(android.R.drawable.stat_sys_upload_done)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()
 
         val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(NOTIFICATION_ID + 1, notification)
-    }
-
-    private fun broadcastProgress(progress: Int) {
-        val intent = Intent(ACTION_EXPORT_PROGRESS).apply {
-            putExtra(EXTRA_PROGRESS, progress)
-        }
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
-    }
-
-    private fun broadcastSuccess(savedUri: String) {
-        val intent = Intent(ACTION_EXPORT_SUCCESS).apply {
-            putExtra(EXTRA_SAVED_URI, savedUri)
-        }
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
-    }
-
-    private fun broadcastFailure(error: String) {
-        val intent = Intent(ACTION_EXPORT_FAILURE).apply {
-            putExtra(EXTRA_ERROR, error)
-        }
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+        manager?.notify(COMPLETION_NOTIFICATION_ID, notification)
     }
 
     private fun saveVideoToGallery(videoFile: File, isAudioOnly: Boolean): Uri? {
         val mimeType = if (isAudioOnly) "audio/mpeg" else "video/mp4"
         val ext = if (isAudioOnly) ".mp3" else ".mp4"
         val prefix = if (isAudioOnly) "Eclip_Audio_" else "Eclip_"
-        
+
         val sharedPreferences = getSharedPreferences("eclip_prefs", Context.MODE_PRIVATE)
         val prefKey = if (isAudioOnly) "export_audio_directory_uri" else "export_directory_uri"
         val customUriString = sharedPreferences.getString(prefKey, null)
-        
+
         if (customUriString != null) {
             try {
                 val treeUri = Uri.parse(customUriString)
@@ -240,7 +348,7 @@ class ExportService : Service() {
         }
 
         return try {
-            val contentValues = android.content.ContentValues().apply {
+            val contentValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, "${prefix}${System.currentTimeMillis()}$ext")
                 put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
                 if (isAudioOnly) {

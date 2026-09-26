@@ -17,13 +17,18 @@ import java.lang.reflect.Type
 
 object ProjectSerializer {
 
-    private val uriSerializer = object : JsonSerializer<Uri>, JsonDeserializer<Uri> {
-        override fun serialize(src: Uri, typeOfSrc: Type, context: JsonSerializationContext): JsonElement {
-            return JsonPrimitive(src.toString())
+    private val uriSerializer = object : JsonSerializer<Uri?>, JsonDeserializer<Uri?> {
+        override fun serialize(src: Uri?, typeOfSrc: Type, context: JsonSerializationContext): JsonElement {
+            return JsonPrimitive(src?.toString() ?: "")
         }
 
-        override fun deserialize(json: JsonElement, typeOfT: Type, context: JsonDeserializationContext): Uri {
-            return Uri.parse(json.asString)
+        override fun deserialize(json: JsonElement, typeOfT: Type, context: JsonDeserializationContext): Uri? {
+            return try {
+                val str = json.asString
+                if (str.isNotBlank()) Uri.parse(str) else null
+            } catch (_: Exception) {
+                null
+            }
         }
     }
 
@@ -49,7 +54,7 @@ object ProjectSerializer {
             var opTypeStr = jsonObject.get("operationType")?.asString
             if (opTypeStr == null) {
                 val typeVal = jsonObject.get("type")?.asString
-                val validClasses = setOf("Trim", "SpeedMain", "ReverseMain", "MirrorMain", "Crop", "AddText", "Merge", "MaskMain", "MuteAudio", "Transition", "MuteClip", "ColorFilter", "AddBackgroundAudio", "AddImageOverlay", "AddSubtitles", "Adjust", "CanvasBackground")
+                val validClasses = setOf("Trim", "SpeedMain", "ReverseMain", "MirrorMain", "Crop", "AddText", "Merge", "MaskMain", "MuteAudio", "Transition", "MuteClip", "ColorFilter", "AddBackgroundAudio", "AddImageOverlay", "MosaicOverlay", "Adjust", "CanvasBackground", "RotationMain", "OpacityMain", "ChromaMain", "AnimationMain")
                 
                 if (typeVal != null && validClasses.contains(typeVal)) {
                     opTypeStr = typeVal
@@ -63,8 +68,12 @@ object ProjectSerializer {
                     }
                 }
             }
+            if (opTypeStr == null) {
+                android.util.Log.w("ProjectSerializer", "Missing operation type, skipping corrupted operation.")
+                return EditOperation.MuteAudio("skipped_unknown_missing_type")
+            }
             
-            val type = opTypeStr ?: throw JsonParseException("Missing type property in EditOperation")
+            val type = opTypeStr
             
             if (type == "Transition") {
                 val t = jsonObject.get("type")?.asString
@@ -97,9 +106,13 @@ object ProjectSerializer {
                 "ColorFilter" -> EditOperation.ColorFilter::class.java
                 "AddBackgroundAudio" -> EditOperation.AddBackgroundAudio::class.java
                 "AddImageOverlay" -> EditOperation.AddImageOverlay::class.java
-                "AddSubtitles" -> EditOperation.AddSubtitles::class.java
+                "MosaicOverlay" -> EditOperation.MosaicOverlay::class.java
                 "Adjust" -> EditOperation.Adjust::class.java
                 "CanvasBackground" -> EditOperation.CanvasBackground::class.java
+                "RotationMain" -> EditOperation.RotationMain::class.java
+                "OpacityMain" -> EditOperation.OpacityMain::class.java
+                "ChromaMain" -> EditOperation.ChromaMain::class.java
+                "AnimationMain" -> EditOperation.AnimationMain::class.java
                 else -> null
             }
 
@@ -109,7 +122,14 @@ object ProjectSerializer {
             }
             
             return try {
-                baseGson.fromJson(jsonObject, clazz)
+                val op = baseGson.fromJson(jsonObject, clazz)
+                if (op is EditOperation.AddBackgroundAudio && (op.audioUri == null || op.audioUri == Uri.EMPTY || op.audioUri.toString().isBlank() || op.audioUri.toString() == "null")) {
+                    EditOperation.MuteAudio("skipped_corrupt_audio_uri")
+                } else if (op is EditOperation.AddImageOverlay && (op.imageUri == null || op.imageUri == Uri.EMPTY || op.imageUri.toString().isBlank() || op.imageUri.toString() == "null")) {
+                    EditOperation.MuteAudio("skipped_corrupt_image_uri")
+                } else {
+                    op
+                }
             } catch (e: Exception) {
                 android.util.Log.w("ProjectSerializer", "Failed to deserialize operation $type: ${e.message}")
                 EditOperation.MuteAudio("skipped_failed_$type")
@@ -128,16 +148,28 @@ object ProjectSerializer {
     
     fun deserialize(json: String): EditRecipe {
         val recipe = gson.fromJson(json, EditRecipe::class.java)
-        val sanitizedOps = recipe.operations.filterNot { 
-            it is EditOperation.MuteAudio && (it.id.startsWith("skipped_unknown_") || it.id.startsWith("skipped_failed_"))
+        val sanitizedOps = (recipe.operations ?: emptyList()).filterNot { 
+            it is EditOperation.MuteAudio && (it.id.startsWith("skipped_") || it.id.contains("skipped_"))
+        }.filter { op ->
+            when (op) {
+                is EditOperation.AddBackgroundAudio -> op.audioUri != null && op.audioUri != Uri.EMPTY && op.audioUri.toString().isNotBlank() && op.audioUri.toString() != "null"
+                is EditOperation.AddImageOverlay -> op.imageUri != null && op.imageUri != Uri.EMPTY && op.imageUri.toString().isNotBlank() && op.imageUri.toString() != "null"
+                else -> true
+            }
         }
         return recipe.copy(operations = sanitizedOps)
     }
 
     fun deserialize(reader: java.io.Reader): EditRecipe {
         val recipe = gson.fromJson(reader, EditRecipe::class.java)
-        val sanitizedOps = recipe.operations.filterNot { 
-            it is EditOperation.MuteAudio && (it.id.startsWith("skipped_unknown_") || it.id.startsWith("skipped_failed_"))
+        val sanitizedOps = (recipe.operations ?: emptyList()).filterNot { 
+            it is EditOperation.MuteAudio && (it.id.startsWith("skipped_") || it.id.contains("skipped_"))
+        }.filter { op ->
+            when (op) {
+                is EditOperation.AddBackgroundAudio -> op.audioUri != null && op.audioUri != Uri.EMPTY && op.audioUri.toString().isNotBlank() && op.audioUri.toString() != "null"
+                is EditOperation.AddImageOverlay -> op.imageUri != null && op.imageUri != Uri.EMPTY && op.imageUri.toString().isNotBlank() && op.imageUri.toString() != "null"
+                else -> true
+            }
         }
         return recipe.copy(operations = sanitizedOps)
     }

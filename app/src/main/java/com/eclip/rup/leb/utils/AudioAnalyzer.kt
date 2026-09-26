@@ -19,52 +19,101 @@ object AudioAnalyzer {
      * Extracts PCM audio from the given Uri using FFmpeg and runs a simple energy-based
      * onset (beat) detection algorithm.
      * Returns a list of timestamps (in milliseconds) where beats were detected.
+     *
+     * Threading Contract:
+     * - Execution runs asynchronously in the background.
+     * - [onProgress] and [onComplete] callbacks are invoked on a background worker thread.
+     *   Callers needing UI updates must dispatch to the Main thread (e.g., via lifecycleScope).
      */
-    fun detectBeats(context: Context, audioUri: Uri, onProgress: (Int) -> Unit = {}, onComplete: (List<Long>) -> Unit) {
+    fun detectBeats(
+        context: Context,
+        audioUri: Uri,
+        onProgress: (Int) -> Unit = {},
+        onComplete: (List<Long>) -> Unit
+    ) {
         val cacheDir = context.cacheDir
         val pcmFile = File(cacheDir, "temp_beat_detect_${System.currentTimeMillis()}.raw")
         
         // We use 8000Hz mono 16-bit to keep the file small and processing fast.
-        val inputPath = FFmpegKitConfig.getSafParameterForRead(context, audioUri)
+        val inputPath = try {
+            if (audioUri.scheme == "content") {
+                FFmpegKitConfig.getSafParameterForRead(context, audioUri)
+            } else {
+                audioUri.path ?: audioUri.toString()
+            }
+        } catch (e: Exception) {
+            audioUri.path ?: audioUri.toString()
+        }
         val cmd = "-y -i \"$inputPath\" -f s16le -ac 1 -ar 8000 \"${pcmFile.absolutePath}\""
         
-        FFmpegKit.executeAsync(cmd, { session: FFmpegSession ->
-            if (ReturnCode.isSuccess(session.returnCode)) {
-                val beats = analyzePcmForBeats(pcmFile)
-                pcmFile.delete()
-                onComplete(beats)
-            } else {
-                pcmFile.delete()
-                onComplete(emptyList())
-            }
-        }, { log: Log ->
-            // Could parse progress if we wanted
-        }, { statistics: Statistics ->
-            // Could parse time for progress
-        })
+        try {
+            FFmpegKit.executeAsync(cmd, { session: FFmpegSession ->
+                try {
+                    if (ReturnCode.isSuccess(session.returnCode)) {
+                        val beats = analyzePcmForBeats(pcmFile)
+                        onComplete(beats)
+                    } else {
+                        onComplete(emptyList())
+                    }
+                } catch (t: Throwable) {
+                    android.util.Log.e("AudioAnalyzer", "Error processing beats", t)
+                    onComplete(emptyList())
+                } finally {
+                    if (pcmFile.exists()) pcmFile.delete()
+                }
+            }, { log: Log ->
+                // Could parse progress if we wanted
+            }, { statistics: Statistics ->
+                // Could parse time for progress
+            })
+        } catch (e: Exception) {
+            if (pcmFile.exists()) pcmFile.delete()
+            onComplete(emptyList())
+        }
     }
 
     private fun analyzePcmForBeats(pcmFile: File): List<Long> {
-        if (!pcmFile.exists()) return emptyList()
+        if (!pcmFile.exists() || pcmFile.length() == 0L) return emptyList()
 
         val sampleRate = 8000
         val windowDurationMs = 20
         val samplesPerWindow = (sampleRate * windowDurationMs) / 1000 // 160 samples
+        val bytesPerWindow = samplesPerWindow * 2 // 320 bytes
         
-        val bytes = pcmFile.readBytes()
-        val shortBuffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-        val numSamples = shortBuffer.capacity()
-        val numWindows = numSamples / samplesPerWindow
+        val totalSamples = (pcmFile.length() / 2).toInt()
+        val numWindows = totalSamples / samplesPerWindow
+        if (numWindows <= 0) return emptyList()
         
         val energies = FloatArray(numWindows)
         
-        for (i in 0 until numWindows) {
-            var sum = 0f
-            for (j in 0 until samplesPerWindow) {
-                val sample = shortBuffer.get(i * samplesPerWindow + j).toFloat()
-                sum += sample * sample
+        try {
+            val windowBuffer = ByteArray(bytesPerWindow)
+            val byteBuffer = ByteBuffer.wrap(windowBuffer).order(ByteOrder.LITTLE_ENDIAN)
+            
+            FileInputStream(pcmFile).use { fis ->
+                var windowIdx = 0
+                while (windowIdx < numWindows) {
+                    var bytesReadTotal = 0
+                    while (bytesReadTotal < bytesPerWindow) {
+                        val read = fis.read(windowBuffer, bytesReadTotal, bytesPerWindow - bytesReadTotal)
+                        if (read == -1) break
+                        bytesReadTotal += read
+                    }
+                    if (bytesReadTotal < bytesPerWindow) break
+                    
+                    byteBuffer.rewind()
+                    var sum = 0.0
+                    for (j in 0 until samplesPerWindow) {
+                        val sample = byteBuffer.short.toDouble()
+                        sum += sample * sample
+                    }
+                    energies[windowIdx] = Math.sqrt(sum / samplesPerWindow).toFloat()
+                    windowIdx++
+                }
             }
-            energies[i] = Math.sqrt((sum / samplesPerWindow).toDouble()).toFloat()
+        } catch (t: Throwable) {
+            android.util.Log.e("AudioAnalyzer", "Error analyzing PCM for beats", t)
+            return emptyList()
         }
         
         // Simple peak picking with moving average

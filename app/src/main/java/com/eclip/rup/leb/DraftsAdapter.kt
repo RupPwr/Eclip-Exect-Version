@@ -1,6 +1,8 @@
 package com.eclip.rup.leb
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.LruCache
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -10,12 +12,58 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.recyclerview.widget.RecyclerView
 import com.eclip.rup.leb.utils.DraftItem
 import com.eclip.rup.leb.utils.setBounceClickListener
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 class DraftsAdapter(
     private var drafts: List<DraftItem>,
     private val onDraftClick: (DraftItem) -> Unit,
     private val onDraftDelete: (DraftItem) -> Unit
 ) : RecyclerView.Adapter<DraftsAdapter.DraftViewHolder>() {
+
+    companion object {
+        private val thumbnailMemoryCache = object : LruCache<String, Bitmap>(
+            (Runtime.getRuntime().maxMemory() / 16).toInt().coerceIn(4 * 1024 * 1024, 32 * 1024 * 1024)
+        ) {
+            override fun sizeOf(key: String, bitmap: Bitmap): Int {
+                return bitmap.byteCount
+            }
+        }
+
+        fun decodeSampledBitmapFromFile(file: File, reqWidth: Int = 240, reqHeight: Int = 240): Bitmap? {
+            return try {
+                val options = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                BitmapFactory.decodeFile(file.absolutePath, options)
+
+                var inSampleSize = 1
+                val height = options.outHeight
+                val width = options.outWidth
+                if (height > reqHeight || width > reqWidth) {
+                    val halfHeight = height / 2
+                    val halfWidth = width / 2
+                    while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
+                        inSampleSize *= 2
+                    }
+                }
+
+                val decodeOptions = BitmapFactory.Options().apply {
+                    this.inSampleSize = inSampleSize
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                }
+                BitmapFactory.decodeFile(file.absolutePath, decodeOptions)
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+
+    private val adapterScope = CoroutineScope(Dispatchers.Main)
 
     var isSelectionMode: Boolean = false
         private set
@@ -33,6 +81,7 @@ class DraftsAdapter(
         val layoutActionContainer: View = view.findViewById(R.id.layoutDraftActionContainer)
         val btnOptions: ImageView = view.findViewById(R.id.btnDraftOptions)
         val ivCheck: ImageView = view.findViewById(R.id.ivDraftCheck)
+        var thumbnailLoadJob: Job? = null
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): DraftViewHolder {
@@ -45,22 +94,38 @@ class DraftsAdapter(
         holder.tvTitle.text = draft.title
         holder.tvDuration.text = draft.getFormattedDuration()
 
-        if (draft.thumbnailFile != null && draft.thumbnailFile.exists()) {
-            try {
-                val bitmap = BitmapFactory.decodeFile(draft.thumbnailFile.absolutePath)
-                if (bitmap != null) {
-                    holder.ivThumbnail.setImageBitmap(bitmap)
-                    holder.ivThumbnail.visibility = View.VISIBLE
-                    holder.ivPlaceholder.visibility = View.GONE
-                } else {
-                    holder.ivThumbnail.visibility = View.GONE
-                    holder.ivPlaceholder.visibility = View.VISIBLE
-                }
-            } catch (e: Exception) {
+        holder.thumbnailLoadJob?.cancel()
+        val thumbFile = draft.thumbnailFile
+        val thumbKey = draft.id
+
+        if (thumbFile != null && thumbFile.exists()) {
+            val cached = thumbnailMemoryCache.get(thumbKey)
+            if (cached != null && !cached.isRecycled) {
+                holder.ivThumbnail.setImageBitmap(cached)
+                holder.ivThumbnail.visibility = View.VISIBLE
+                holder.ivPlaceholder.visibility = View.GONE
+            } else {
+                holder.ivThumbnail.setImageDrawable(null)
                 holder.ivThumbnail.visibility = View.GONE
                 holder.ivPlaceholder.visibility = View.VISIBLE
+
+                holder.ivThumbnail.tag = thumbKey
+                holder.thumbnailLoadJob = adapterScope.launch {
+                    val bitmap = withContext(Dispatchers.IO) {
+                        decodeSampledBitmapFromFile(thumbFile)
+                    }
+                    if (bitmap != null) {
+                        thumbnailMemoryCache.put(thumbKey, bitmap)
+                        if (holder.ivThumbnail.tag == thumbKey) {
+                            holder.ivThumbnail.setImageBitmap(bitmap)
+                            holder.ivThumbnail.visibility = View.VISIBLE
+                            holder.ivPlaceholder.visibility = View.GONE
+                        }
+                    }
+                }
             }
         } else {
+            holder.ivThumbnail.setImageDrawable(null)
             holder.ivThumbnail.visibility = View.GONE
             holder.ivPlaceholder.visibility = View.VISIBLE
         }
@@ -121,6 +186,13 @@ class DraftsAdapter(
                 popup.show()
             }
         }
+    }
+
+    override fun onViewRecycled(holder: DraftViewHolder) {
+        super.onViewRecycled(holder)
+        holder.thumbnailLoadJob?.cancel()
+        holder.thumbnailLoadJob = null
+        holder.ivThumbnail.setImageDrawable(null)
     }
 
     override fun getItemCount(): Int = drafts.size

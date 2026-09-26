@@ -4,8 +4,6 @@
     android:id="@+id/backgroundEditingToolbar"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@drawable/bg_bottom_sheet"
-    android:elevation="16dp"
     android:orientation="vertical"
     android:paddingTop="12dp"
     android:paddingBottom="24dp"

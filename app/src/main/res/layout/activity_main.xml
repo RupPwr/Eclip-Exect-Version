@@ -41,8 +41,8 @@
             app:tint="@color/textColor" />
     </RelativeLayout>
 
-    <!-- Home Page Content -->
-    <ScrollView
+    <!-- Home Page Content Root (Scrollable Hero + Drafts Section) -->
+    <androidx.core.widget.NestedScrollView
         android:id="@+id/layoutHomeContent"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -205,7 +205,7 @@
             </LinearLayout>
 
         </LinearLayout>
-    </ScrollView>
+    </androidx.core.widget.NestedScrollView>
 
     <!-- Settings Page Content Root (Fixed Header + Scrollable Options) -->
     <RelativeLayout
@@ -480,9 +480,9 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:background="?attr/selectableItemBackground"
-                    android:clickable="true"
-                    android:focusable="true"
+                    android:clickable="false"
+                    android:focusable="false"
+                    android:alpha="0.5"
                     android:paddingVertical="10dp">
 
                     <TextView
@@ -498,7 +498,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:text="@string/str_fullscreen_enabled_desc"
+                        android:text="@string/str_fullscreen_disabled_desc"
                         android:textColor="@color/iconSecondary"
                         android:textSize="13sp" />
                 </LinearLayout>

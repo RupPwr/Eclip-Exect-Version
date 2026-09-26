@@ -4,16 +4,20 @@
     android:layout_height="match_parent"
     android:layout_marginEnd="2dp">
 
+    <com.eclip.rup.leb.customviews.timeline.ClipThumbStripView
+        android:id="@+id/segmentClipThumbStrip"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/segmentFrameRecyclerView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:visibility="gone" />
 
     <com.eclip.rup.leb.customviews.TrackTrimView
         android:id="@+id/segmentTrimTrack"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
-
-
 
 </FrameLayout>

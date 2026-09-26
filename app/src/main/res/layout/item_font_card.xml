@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/fontCardRoot"
+    android:layout_width="match_parent"
+    android:layout_height="50dp"
+    android:layout_marginBottom="6dp"
+    android:background="@drawable/bg_font_card"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="?attr/selectableItemBackground">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="14dp">
+
+        <!-- Left: Font Display Name and Category Subtitle -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.1"
+            android:orientation="vertical"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tvFontName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Roboto"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/tvFontCategory"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Sans Serif"
+                android:textColor="#8A8A93"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- Center/Right: Typography Sample Preview in the font's actual typeface -->
+        <TextView
+            android:id="@+id/tvFontSample"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.4"
+            android:gravity="center_vertical|end"
+            android:text="Aa Bb 123"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:layout_marginEnd="10dp" />
+
+        <!-- Action / Selection Container -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <!-- Delete button for user-imported custom fonts -->
+            <ImageView
+                android:id="@+id/ivFontDelete"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginEnd="4dp"
+                android:src="@drawable/ic_delete_24"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:padding="5dp"
+                app:tint="#FF5252"
+                android:visibility="gone"
+                android:contentDescription="Delete Font" />
+
+            <!-- Selection Checkmark Indicator Badge -->
+            <ImageView
+                android:id="@+id/ivFontSelected"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@drawable/ic_check_24"
+                android:background="@drawable/bg_circle_active"
+                android:backgroundTint="#FF2A6D"
+                android:padding="3dp"
+                app:tint="#FFFFFF"
+                android:visibility="gone"
+                android:contentDescription="Selected" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+</FrameLayout>
+

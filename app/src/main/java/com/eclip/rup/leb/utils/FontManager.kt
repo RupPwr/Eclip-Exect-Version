@@ -5,19 +5,80 @@ import android.graphics.Typeface
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
+import com.antonkarpenko.ffmpegkit.FFmpegKitConfig
 import java.io.File
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 data class FontItem(
     val name: String,
     val path: String,
-    val isCustom: Boolean,
-    val typeface: Typeface? = null
+    val isCustom: Boolean = false,
+    val typeface: Typeface? = null,
+    val category: String = FontManager.CATEGORY_ALL,
+    val sampleText: String = "Aa",
+    val assetFileName: String? = null
 )
 
 object FontManager {
     private const val TAG = "FontManager"
     private const val CUSTOM_FONTS_DIR = "custom_fonts"
+    private const val BUNDLED_FONTS_DIR = "bundled_fonts"
+
+    // Categories (English / Latin Styles + Custom)
+    const val CATEGORY_ALL = "All"
+    const val CATEGORY_SANS = "Sans Serif"
+    const val CATEGORY_SERIF = "Serif"
+    const val CATEGORY_SCRIPT = "Script"
+    const val CATEGORY_DISPLAY = "Display"
+    const val CATEGORY_CUSTOM = "Custom"
+
+    val CATEGORIES = listOf(
+        CATEGORY_ALL,
+        CATEGORY_SANS,
+        CATEGORY_SERIF,
+        CATEGORY_SCRIPT,
+        CATEGORY_DISPLAY,
+        CATEGORY_CUSTOM
+    )
+
+    private val typefaceCache = ConcurrentHashMap<String, Typeface>()
+
+    // Bundled font metadata definitions
+    private data class BundledFontMeta(
+        val assetFile: String,
+        val displayName: String,
+        val category: String,
+        val sampleText: String
+    )
+
+    private val BUNDLED_FONT_CATALOG = listOf(
+        // Sans Serif (Clean & Modern)
+        BundledFontMeta("Roboto-Regular.ttf", "Roboto", CATEGORY_SANS, "Roboto"),
+        BundledFontMeta("Montserrat-Regular.ttf", "Montserrat", CATEGORY_SANS, "Montserrat"),
+        BundledFontMeta("Oswald-Regular.ttf", "Oswald", CATEGORY_SANS, "OSWALD"),
+
+        // Display (Bold, Impact & Punchy)
+        BundledFontMeta("BebasNeue-Regular.ttf", "Bebas Neue", CATEGORY_DISPLAY, "BEBAS"),
+        BundledFontMeta("Anton-Regular.ttf", "Anton", CATEGORY_DISPLAY, "ANTON"),
+        BundledFontMeta("Righteous-Regular.ttf", "Righteous", CATEGORY_DISPLAY, "Righteous"),
+        BundledFontMeta("Bangers-Regular.ttf", "Bangers", CATEGORY_DISPLAY, "BANGERS!"),
+        BundledFontMeta("AlfaSlabOne-Regular.ttf", "Alfa Slab One", CATEGORY_DISPLAY, "ALFA SLAB"),
+
+        // Script & Handwriting (Cursive & Elegant)
+        BundledFontMeta("Pacifico-Regular.ttf", "Pacifico", CATEGORY_SCRIPT, "Pacifico"),
+        BundledFontMeta("DancingScript-Regular.ttf", "Dancing Script", CATEGORY_SCRIPT, "Dancing"),
+        BundledFontMeta("Lobster-Regular.ttf", "Lobster", CATEGORY_SCRIPT, "Lobster"),
+        BundledFontMeta("Caveat-Regular.ttf", "Caveat", CATEGORY_SCRIPT, "Caveat"),
+        BundledFontMeta("GreatVibes-Regular.ttf", "Great Vibes", CATEGORY_SCRIPT, "Great Vibes"),
+        BundledFontMeta("Courgette-Regular.ttf", "Courgette", CATEGORY_SCRIPT, "Courgette"),
+        BundledFontMeta("Sacramento-Regular.ttf", "Sacramento", CATEGORY_SCRIPT, "Sacramento"),
+
+        // Serif (Classic & Editorial)
+        BundledFontMeta("PlayfairDisplay-Regular.ttf", "Playfair Display", CATEGORY_SERIF, "Playfair"),
+        BundledFontMeta("Cinzel-Regular.ttf", "Cinzel", CATEGORY_SERIF, "CINZEL"),
+        BundledFontMeta("AbrilFatface-Regular.ttf", "Abril Fatface", CATEGORY_SERIF, "Abril Fatface")
+    )
 
     fun getCustomFontsDir(context: Context): File {
         val dir = File(context.filesDir, CUSTOM_FONTS_DIR)
@@ -25,6 +86,47 @@ object FontManager {
             dir.mkdirs()
         }
         return dir
+    }
+
+    fun getBundledFontsDir(context: Context): File {
+        val dir = File(context.filesDir, BUNDLED_FONTS_DIR)
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
+
+    /**
+     * Copies an asset font file to internal storage and returns its absolute path.
+     */
+    fun ensureAssetFontExtracted(context: Context, assetFileName: String): String? {
+        return try {
+            val destDir = getBundledFontsDir(context)
+            val destFile = File(destDir, assetFileName)
+            if (!destFile.exists() || destFile.length() == 0L) {
+                context.assets.open("fonts/$assetFileName").use { input ->
+                    destFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+            destFile.absolutePath
+        } catch (e: Exception) {
+            Log.e(TAG, "Error extracting asset font $assetFileName", e)
+            null
+        }
+    }
+
+    fun getTypeface(path: String?): Typeface {
+        if (path.isNullOrBlank()) return Typeface.DEFAULT
+        return typefaceCache.getOrPut(path) {
+            try {
+                Typeface.createFromFile(path) ?: Typeface.DEFAULT
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to create typeface from $path", e)
+                Typeface.DEFAULT
+            }
+        }
     }
 
     fun importFontFromUri(context: Context, uri: Uri): FontItem? {
@@ -48,6 +150,8 @@ object FontManager {
                 return null
             }
 
+            typefaceCache[destFile.absolutePath] = typeface
+
             val fontName = destFile.nameWithoutExtension
                 .replace("_", " ")
                 .replace("-", " ")
@@ -56,7 +160,9 @@ object FontManager {
                 name = fontName,
                 path = destFile.absolutePath,
                 isCustom = true,
-                typeface = typeface
+                typeface = typeface,
+                category = CATEGORY_CUSTOM,
+                sampleText = "Aa"
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to import font from URI: $uri", e)
@@ -71,34 +177,46 @@ object FontManager {
             file.isFile && file.extension.lowercase(Locale.US) in setOf("ttf", "otf")
         }.sortedBy { it.nameWithoutExtension.lowercase(Locale.US) }
         .mapNotNull { file ->
-            val tf = try {
-                Typeface.createFromFile(file)
-            } catch (e: Exception) {
-                null
-            }
-            if (tf != null) {
-                FontItem(
-                    name = file.nameWithoutExtension.replace("_", " ").replace("-", " "),
-                    path = file.absolutePath,
-                    isCustom = true,
-                    typeface = tf
-                )
-            } else null
+            val tf = getTypeface(file.absolutePath)
+            FontItem(
+                name = file.nameWithoutExtension.replace("_", " ").replace("-", " "),
+                path = file.absolutePath,
+                isCustom = true,
+                typeface = tf,
+                category = CATEGORY_CUSTOM,
+                sampleText = "Aa"
+            )
         }
     }
 
-    fun getAllFonts(context: Context, defaultFontPath: String?): List<FontItem> {
+    /**
+     * Get all available fonts: bundled fonts + custom imported fonts + system fonts (if any).
+     */
+    fun getAllFonts(context: Context, defaultFontPath: String? = null): List<FontItem> {
         val fonts = mutableListOf<FontItem>()
         val pathsSeen = mutableSetOf<String>()
 
-        // 1. Default bundled font (Roboto Regular)
-        if (!defaultFontPath.isNullOrBlank() && File(defaultFontPath).exists()) {
-            val defaultTf = try { Typeface.createFromFile(defaultFontPath) } catch (e: Exception) { Typeface.DEFAULT }
-            fonts.add(FontItem("Roboto Regular", defaultFontPath, isCustom = false, typeface = defaultTf))
-            pathsSeen.add(defaultFontPath)
+        // 1. Bundled fonts
+        for (meta in BUNDLED_FONT_CATALOG) {
+            val extractedPath = ensureAssetFontExtracted(context, meta.assetFile)
+            if (extractedPath != null) {
+                val tf = getTypeface(extractedPath)
+                fonts.add(
+                    FontItem(
+                        name = meta.displayName,
+                        path = extractedPath,
+                        isCustom = false,
+                        typeface = tf,
+                        category = meta.category,
+                        sampleText = meta.sampleText,
+                        assetFileName = meta.assetFile
+                    )
+                )
+                pathsSeen.add(extractedPath)
+            }
         }
 
-        // 2. User-imported custom fonts
+        // 2. Custom fonts
         getCustomFonts(context).forEach { item ->
             if (!pathsSeen.contains(item.path)) {
                 fonts.add(item)
@@ -106,47 +224,37 @@ object FontManager {
             }
         }
 
-        // 3. System fonts
-        val fontDirectories = listOf(
-            File("/system/fonts"),
-            File("/data/fonts"),
-            File("/product/fonts"),
-            File(context.cacheDir, "fonts")
-        )
-
-        for (dir in fontDirectories) {
-            if (!dir.exists() || !dir.isDirectory) continue
-            dir.listFiles()
-                ?.filter { file -> file.isFile && file.extension.lowercase(Locale.US) in setOf("ttf", "otf") }
-                ?.sortedBy { it.nameWithoutExtension.lowercase(Locale.US) }
-                ?.forEach { file ->
-                    if (!pathsSeen.contains(file.absolutePath)) {
-                        val tf = try { Typeface.createFromFile(file) } catch (e: Exception) { null }
-                        if (tf != null) {
-                            fonts.add(FontItem(
-                                name = file.nameWithoutExtension,
-                                path = file.absolutePath,
-                                isCustom = false,
-                                typeface = tf
-                            ))
-                            pathsSeen.add(file.absolutePath)
-                        }
-                    }
+        // Register bundled fonts directory with FFmpeg
+        try {
+            val bundledDir = getBundledFontsDir(context)
+            val fontMap = mutableMapOf<String, String>()
+            bundledDir.listFiles()?.forEach { f ->
+                if (f.isFile) {
+                    fontMap[f.nameWithoutExtension] = f.name
                 }
-        }
-
-        if (fonts.isEmpty() && !defaultFontPath.isNullOrBlank()) {
-            fonts.add(FontItem("Roboto Regular", defaultFontPath, isCustom = false, typeface = Typeface.DEFAULT))
+            }
+            FFmpegKitConfig.setFontDirectory(context, bundledDir.absolutePath, fontMap)
+        } catch (e: Exception) {
+            Log.w(TAG, "FFmpeg font dir setup warning: ${e.message}")
         }
 
         return fonts
+    }
+
+    fun getFontsByCategory(context: Context, category: String, defaultFontPath: String? = null): List<FontItem> {
+        val all = getAllFonts(context, defaultFontPath)
+        if (category == CATEGORY_ALL) return all
+        if (category == CATEGORY_CUSTOM) return all.filter { it.isCustom }
+        return all.filter { it.category == category }
     }
 
     fun deleteCustomFont(context: Context, fontPath: String): Boolean {
         return try {
             val file = File(fontPath)
             if (file.exists() && file.parentFile?.name == CUSTOM_FONTS_DIR) {
-                file.delete()
+                val deleted = file.delete()
+                typefaceCache.remove(fontPath)
+                deleted
             } else {
                 false
             }

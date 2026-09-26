@@ -17,6 +17,7 @@ import java.io.File
 import android.os.Build
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * FFmpegRenderEngine handles all FFmpeg operations for the video editor.
@@ -33,7 +34,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
  */
 class FFmpegRenderEngine(private val context: Context) {
 
-    private val activeSessions = mutableListOf<FFmpegSession>()
+    private val activeSessions = CopyOnWriteArrayList<FFmpegSession>()
     private val sessionLogBuffers = ConcurrentHashMap<Long, ConcurrentLinkedQueue<com.antonkarpenko.ffmpegkit.Log>>()
     private val TAG = "FFmpegRenderEngine"
 
@@ -86,7 +87,7 @@ class FFmpegRenderEngine(private val context: Context) {
 
     sealed class RenderResult {
         data class Success(val outputPath: String, val session: FFmpegSession) : RenderResult()
-        data class Failure(val error: String, val session: FFmpegSession? = null) : RenderResult()
+        data class Failure(val error: String, val userMessage: String? = null, val session: FFmpegSession? = null) : RenderResult()
         object Cancelled : RenderResult()
     }
 
@@ -116,7 +117,7 @@ class FFmpegRenderEngine(private val context: Context) {
             fontMap[alias] = fileName
             FFmpegKitConfig.setFontDirectory(context, context.cacheDir.absolutePath, fontMap)
             
-            alias
+            fontFile.absolutePath
         } catch (e: Exception) {
             Log.e(TAG, "Failed to copy font to cache: ${e.message}", e)
             null
@@ -129,12 +130,49 @@ class FFmpegRenderEngine(private val context: Context) {
      * Execute an FFmpeg command and return the result.
      * Runs on IO dispatcher for non-blocking execution.
      */
-    suspend fun executeCommand(command: String, isRetry: Boolean = false): RenderResult {
+    suspend fun executeCommand(command: String, retryLevel: Int = 0): RenderResult {
         return withContext(Dispatchers.IO) {
             try {
                 Log.d(TAG, "Executing FFmpeg command: $command")
-                val session = FFmpegKit.execute(command)
-                activeSessions.add(session)
+                
+                val isHardwareCodec = command.contains("mediacodec")
+                val sessionBlock: suspend () -> FFmpegSession = {
+                    suspendCancellableCoroutine { cont ->
+                        val asyncSession = FFmpegKit.executeAsync(command, { completeSession ->
+                            cont.resume(completeSession)
+                        }, { log ->
+                            val msg = log.message?.trimEnd() ?: return@executeAsync
+                            if (msg.isNotEmpty()) {
+                                val sId = log.sessionId
+                                if (sId != 0L) {
+                                    val buf = sessionLogBuffers.getOrPut(sId) { ConcurrentLinkedQueue() }
+                                    if (buf.size < 2000) {
+                                        buf.add(log)
+                                    }
+                                }
+                            }
+                        }, null)
+                        
+                        activeSessions.add(asyncSession)
+                        
+                        cont.invokeOnCancellation {
+                            Log.d(TAG, "Coroutine cancelled. Terminating FFmpeg session: ${asyncSession.sessionId}")
+                            FFmpegKit.cancel(asyncSession.sessionId)
+                            activeSessions.remove(asyncSession)
+                            sessionLogBuffers.remove(asyncSession.sessionId)
+                        }
+                    }
+                }
+
+                val session = if (isHardwareCodec) {
+                    com.eclip.rup.leb.utils.CodecInstancePool.withHardwareCodecPermit {
+                        sessionBlock()
+                    }
+                } else {
+                    sessionBlock()
+                }
+
+                activeSessions.remove(session)
 
                 val returnCode = session.getReturnCode()
                 Log.d(TAG, "FFmpeg completed with return code: $returnCode")
@@ -149,27 +187,74 @@ class FFmpegRenderEngine(private val context: Context) {
                         session = session
                     )
                 } else {
+                    cleanupFailedSession(session)
+
                     val diagnosticLog = createDiagnosticReport(context, command, returnCode, session, logs)
 
-                    if (!isRetry && command.contains("h264_mediacodec")) {
-                        Log.w(TAG, "Hardware encoder h264_mediacodec failed or produced no video stream. Falling back to software encoder libx264. Error:\n$diagnosticLog")
-                        val fallbackCommand = command.replace("h264_mediacodec", "libx264")
-                        return@withContext executeCommand(fallbackCommand, isRetry = true)
-                    } else if (!isRetry && command.contains("libx264")) {
-                        Log.w(TAG, "Software encoder libx264 failed. Falling back to hardware encoder h264_mediacodec. Error:\n$diagnosticLog")
-                        val fallbackCommand = command.replace("-c:v libx264", "-c:v h264_mediacodec -b:v 8M").replace("libx264", "h264_mediacodec")
-                        return@withContext executeCommand(fallbackCommand, isRetry = true)
+                    if (isHardwareEncoderFailure(command, returnCode, logs, missingVideo)) {
+                        val retryResult = tryHardwareEncode(command, retryLevel, diagnosticLog) { cmd, lvl ->
+                            executeCommand(cmd, lvl)
+                        }
+                        if (retryResult != null) return@withContext retryResult
                     }
 
-                    Log.e(TAG, "FFmpeg error:\n$diagnosticLog")
-                    RenderResult.Failure(error = diagnosticLog, session = session)
+                    Log.e(TAG, "FFmpeg error (non-recoverable):\n$diagnosticLog")
+                    val userMsg = if (retryLevel >= 2) {
+                        "वीडियो प्रोसेसिंग पूरी तरह विफल रही। डिवाइस का हार्डवेयर और सॉफ़्टवेयर एनकोडर दोनों काम नहीं कर रहे हैं।"
+                    } else {
+                        "वीडियो प्रोसेसिंग में तकनीकी त्रुटि आई। (Error Code: ${returnCode?.getValue() ?: "Unknown"})"
+                    }
+                    RenderResult.Failure(error = diagnosticLog, userMessage = userMsg, session = session)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Exception during FFmpeg execution: ${e.message}", e)
                 val diagnosticLog = createDiagnosticReport(context, command, null, null, null, e)
-                RenderResult.Failure(error = diagnosticLog)
+                RenderResult.Failure(error = diagnosticLog, userMessage = "प्रोसेसिंग के दौरान अप्रत्याशित त्रुटि आई।")
             }
         }
+    }
+
+    // ── Clean Architecture Helpers ────────────────────────────────────────────
+
+    private suspend fun tryHardwareEncode(
+        command: String,
+        retryLevel: Int,
+        diagnosticLog: String,
+        executor: suspend (String, Int) -> RenderResult
+    ): RenderResult? {
+        val fallbackCommand = getFallbackCommand(command, retryLevel) ?: return null
+        
+        if (fallbackCommand.contains("libx264")) {
+            Log.w(TAG, "Hardware encoder failed. Terminating process and falling back to software encoder libx264. Error:\n$diagnosticLog")
+        } else {
+            Log.w(TAG, "Hardware encoder hevc_mediacodec failed. Terminating process and falling back to h264_mediacodec. Error:\n$diagnosticLog")
+        }
+        
+        return executor(fallbackCommand, retryLevel + 1)
+    }
+
+    private fun getFallbackCommand(command: String, retryLevel: Int): String? {
+        if (retryLevel == 0 && command.contains("hevc_mediacodec")) {
+            return command.replace("hevc_mediacodec", "h264_mediacodec")
+        } else if (retryLevel <= 1 && command.contains("h264_mediacodec")) {
+            return fallbackToSoftwareEncode(command)
+        }
+        return null
+    }
+
+    private fun fallbackToSoftwareEncode(command: String): String {
+        return if (!command.contains("-preset")) {
+            command.replace("-c:v h264_mediacodec -b:v 2M", "-c:v libx264 -preset ultrafast -tune fastdecode -crf 26")
+                .replace("-c:v h264_mediacodec", "-c:v libx264 -preset ultrafast")
+                .replace("h264_mediacodec", "libx264")
+        } else {
+            command.replace("h264_mediacodec", "libx264")
+        }
+    }
+
+    private fun cleanupFailedSession(session: FFmpegSession) {
+        FFmpegKit.cancel(session.sessionId)
+        activeSessions.remove(session)
     }
 
     // ── Session management ────────────────────────────────────────────────────
@@ -217,7 +302,7 @@ class FFmpegRenderEngine(private val context: Context) {
     ): RenderResult {
         val cropFilter = buildCropFilter(aspectRatio)
             ?: return RenderResult.Failure("Invalid aspect ratio: $aspectRatio")
-        val command = "-i \"$sourceFilePath\" -vf \"$cropFilter\" -c:a copy \"$outputFilePath\""
+        val command = "-hwaccel mediacodec -i \"$sourceFilePath\" -vf \"$cropFilter\" -c:a copy \"$outputFilePath\""
         return executeCommand(command)
     }
 
@@ -235,7 +320,7 @@ class FFmpegRenderEngine(private val context: Context) {
         fontFilePath: String? = null
     ): RenderResult {
         val textFilter = buildDrawtextFilter(text, fontSize, positionParam, fontFilePath)
-        val command = "-i \"$sourceFilePath\" -vf \"$textFilter\" -c:a copy \"$outputFilePath\""
+        val command = "-hwaccel mediacodec -i \"$sourceFilePath\" -vf \"$textFilter\" -c:a copy \"$outputFilePath\""
         return executeCommand(command)
     }
 
@@ -246,7 +331,7 @@ class FFmpegRenderEngine(private val context: Context) {
         ffmpegCommand: String,
         totalDurationSecs: Double? = null,
         onProgress: ((Int) -> Unit)? = null,
-        isRetry: Boolean = false
+        retryLevel: Int = 0
     ): RenderResult {
         return withContext(Dispatchers.IO) {
             try {
@@ -301,27 +386,93 @@ class FFmpegRenderEngine(private val context: Context) {
                         session = session
                     )
                 } else {
+                    cleanupFailedSession(session)
+
                     val diagnosticLog = createDiagnosticReport(context, ffmpegCommand, returnCode, session, logs)
 
-                    if (!isRetry && ffmpegCommand.contains("h264_mediacodec")) {
-                        Log.w(TAG, "Hardware encoder h264_mediacodec failed or produced no video stream. Falling back to software encoder libx264. Error:\n$diagnosticLog")
-                        val fallbackCommand = ffmpegCommand.replace("h264_mediacodec", "libx264")
-                        return@withContext exportFinal(fallbackCommand, totalDurationSecs, onProgress, isRetry = true)
-                    } else if (!isRetry && ffmpegCommand.contains("libx264")) {
-                        Log.w(TAG, "Software encoder libx264 failed. Falling back to hardware encoder h264_mediacodec. Error:\n$diagnosticLog")
-                        val fallbackCommand = ffmpegCommand.replace("-c:v libx264", "-c:v h264_mediacodec -b:v 8M").replace("libx264", "h264_mediacodec")
-                        return@withContext exportFinal(fallbackCommand, totalDurationSecs, onProgress, isRetry = true)
+                    if (isHardwareEncoderFailure(ffmpegCommand, returnCode, logs, missingVideo)) {
+                        val retryResult = tryHardwareEncode(ffmpegCommand, retryLevel, diagnosticLog) { cmd, lvl ->
+                            exportFinal(cmd, totalDurationSecs, onProgress, lvl)
+                        }
+                        if (retryResult != null) return@withContext retryResult
                     }
 
-                    Log.e(TAG, "FFmpeg error:\n$diagnosticLog")
-                    RenderResult.Failure(error = diagnosticLog, session = session)
+                    Log.e(TAG, "FFmpeg error (non-recoverable):\n$diagnosticLog")
+                    val userMsg = if (retryLevel >= 2) {
+                        "वीडियो एक्सपोर्ट पूरी तरह विफल रहा। डिवाइस का हार्डवेयर और सॉफ़्टवेयर एनकोडर दोनों काम नहीं कर रहे हैं।"
+                    } else {
+                        "वीडियो एक्सपोर्ट में तकनीकी त्रुटि आई। (Error Code: ${returnCode?.getValue() ?: "Unknown"})"
+                    }
+                    RenderResult.Failure(error = diagnosticLog, userMessage = userMsg, session = session)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Exception during FFmpeg execution: ${e.message}", e)
                 val diagnosticLog = createDiagnosticReport(context, ffmpegCommand, null, null, null, e)
-                RenderResult.Failure(error = diagnosticLog)
+                RenderResult.Failure(error = diagnosticLog, userMessage = "एक्सपोर्ट के दौरान अप्रत्याशित त्रुटि आई।")
             }
         }
+    }
+
+    private fun isHardwareEncoderFailure(
+        command: String,
+        returnCode: com.antonkarpenko.ffmpegkit.ReturnCode?,
+        logs: List<com.antonkarpenko.ffmpegkit.Log>?,
+        missingVideo: Boolean
+    ): Boolean {
+        if (!command.contains("hevc_mediacodec") && !command.contains("h264_mediacodec")) {
+            return false
+        }
+        
+        if (missingVideo) return true
+
+        var hasHwError = false
+        if (!logs.isNullOrEmpty()) {
+            val hwFailureKeywords = listOf(
+                "MediaCodec",
+                "CodecException",
+                "codec configure failure",
+                "encoder unavailable",
+                "encoder start failure",
+                "unsupported codec",
+                "unsupported profile",
+                "unsupported level",
+                "output initialization failure",
+                "Error while opening encoder",
+                "Error initializing output stream"
+            )
+            val genericFailureKeywords = listOf(
+                "No such file or directory",
+                "Permission denied",
+                "Invalid data found when processing input",
+                "moov atom not found"
+            )
+            
+            for (l in logs) {
+                val msg = l.message ?: continue
+                
+                for (keyword in genericFailureKeywords) {
+                    if (msg.contains(keyword, ignoreCase = true)) {
+                        return false // Immediately abort fallback, it's a generic I/O error, not HW failure
+                    }
+                }
+                
+                for (keyword in hwFailureKeywords) {
+                    if (msg.contains(keyword, ignoreCase = true)) {
+                        hasHwError = true
+                    }
+                }
+            }
+        }
+        
+        if (hasHwError) return true
+        
+        // If it failed with a non-success code, and we didn't find any generic I/O error,
+        // assume it's a native encoder crash.
+        if (returnCode != null && !com.antonkarpenko.ffmpegkit.ReturnCode.isSuccess(returnCode)) {
+            return true
+        }
+        
+        return false
     }
 
     private fun isMissingVideoStream(command: String, logs: List<com.antonkarpenko.ffmpegkit.Log>?, outputPath: String): Boolean {
@@ -516,7 +667,7 @@ class FFmpegRenderEngine(private val context: Context) {
         }
         val audioFilter = atempoFilters.joinToString(",")
         
-        val command = "-y -ss $startSecs -t $durationSecs -i \"$sourceFilePath\" -filter:v \"setpts=${ptsMultiplier}*PTS,format=yuv420p\" -filter:a \"$audioFilter\" \"$outputFilePath\""
+        val command = "-y -ss $startSecs -t $durationSecs -hwaccel mediacodec -i \"$sourceFilePath\" -filter:v \"setpts=${ptsMultiplier}*PTS,format=yuv420p\" -filter:a \"$audioFilter\" \"$outputFilePath\""
         return executeCommand(command)
     }
 
@@ -524,10 +675,14 @@ class FFmpegRenderEngine(private val context: Context) {
         sourceFilePath: String,
         outputFilePath: String
     ): RenderResult {
-        // Fast proxy generation: Downscale to max 720p (keeping aspect ratio), fast preset for encoding speed.
-        val command = "-y -i \"$sourceFilePath\" -vf \"scale='min(1280,iw)':-2\" -c:v libx264 -preset ultrafast -crf 28 -tune fastdecode -c:a copy \"$outputFilePath\""
+        // Fast proxy generation: Downscale to 480p (keeping aspect ratio with even dimensions),
+        // Short-GOP (-g 5) for instant I-frame / key-frame seek responsiveness.
+        // Primary: Hardware encoder (hevc_mediacodec) for minimal CPU load.
+        // Fallback: handled automatically by executeCommand
+        val command = "-y -threads 0 -hwaccel mediacodec -i \"$sourceFilePath\" -vf \"scale='min(854,iw)':-2,scale=trunc(iw/2)*2:trunc(ih/2)*2\" -c:v hevc_mediacodec -b:v 2M -g 5 -keyint_min 5 -sc_threshold 0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart \"$outputFilePath\""
         return executeCommand(command)
     }
+
 
     suspend fun reverseVideo(
         sourceFilePath: String,
@@ -537,7 +692,7 @@ class FFmpegRenderEngine(private val context: Context) {
     ): RenderResult {
         val startSecs = startMs / 1000.0
         val durationSecs = (endMs - startMs) / 1000.0
-        val command = "-y -ss $startSecs -i \"$sourceFilePath\" -to $durationSecs -filter:v \"reverse,format=yuv420p\" -filter:a \"areverse\" -c:v libx264 -c:a aac \"$outputFilePath\""
+        val command = "-y -ss $startSecs -hwaccel mediacodec -i \"$sourceFilePath\" -to $durationSecs -filter:v \"reverse,format=yuv420p\" -filter:a \"areverse\" -c:v libx264 -c:a aac \"$outputFilePath\""
         return executeCommand(command)
     }
 
@@ -548,7 +703,7 @@ class FFmpegRenderEngine(private val context: Context) {
     ): RenderResult {
         val cropFilter = buildCropFilter(aspectRatio)
             ?: return RenderResult.Failure("Invalid aspect ratio: $aspectRatio")
-        val command = "-i \"$sourceFilePath\" -vf \"$cropFilter\" -c:a copy \"$outputFilePath\""
+        val command = "-hwaccel mediacodec -i \"$sourceFilePath\" -vf \"$cropFilter\" -c:a copy \"$outputFilePath\""
         return executeCommand(command)
     }
 
@@ -566,7 +721,7 @@ class FFmpegRenderEngine(private val context: Context) {
         fontFilePath: String? = null
     ): RenderResult {
         val textFilter = buildDrawtextFilter(text, fontSize, positionParam, fontFilePath)
-        val command = "-i \"$sourceFilePath\" -vf \"$textFilter\" -c:a copy \"$outputFilePath\""
+        val command = "-hwaccel mediacodec -i \"$sourceFilePath\" -vf \"$textFilter\" -c:a copy \"$outputFilePath\""
         return executeCommand(command)
     }
 
@@ -597,7 +752,7 @@ class FFmpegRenderEngine(private val context: Context) {
         outputImagePath: String
     ): RenderResult {
         val timeSecs = timeMs / 1000.0
-        val command = "-ss $timeSecs -i \"$sourceFilePath\" -vframes 1 \"$outputImagePath\""
+        val command = "-ss $timeSecs -hwaccel mediacodec -i \"$sourceFilePath\" -vframes 1 \"$outputImagePath\""
         return executeCommand(command)
     }
 
@@ -667,7 +822,7 @@ class FFmpegRenderEngine(private val context: Context) {
 
         // Use 30 fps with hardware acceleration (h264_mediacodec) for instant encoding, falling back to libx264 if needed.
         // The scale filter ensures the width and height are divisible by 2.
-        val command = "-f image2 -loop 1 -framerate 30 -i \"$imagePath\" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -vf \"scale=trunc(iw/2)*2:trunc(ih/2)*2\" -c:v h264_mediacodec -b:v 4M -t $durationSecs -pix_fmt yuv420p -c:a aac -shortest \"$outputPath\""
+        val command = "-f image2 -loop 1 -framerate 30 -i \"$imagePath\" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -vf \"scale=trunc(iw/2)*2:trunc(ih/2)*2\" -c:v hevc_mediacodec -b:v 4M -t $durationSecs -pix_fmt yuv420p -c:a aac -shortest \"$outputPath\""
         return executeCommand(command)
     }
 
@@ -682,7 +837,7 @@ class FFmpegRenderEngine(private val context: Context) {
 
         // ignore_loop 0 loops the gif infinitely. We then add a silent audio track and limit duration.
         // Try hardware encoder first for fast generation.
-        val command = "-f gif -ignore_loop 0 -i \"$gifPath\" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -vf \"scale=trunc(iw/2)*2:trunc(ih/2)*2\" -c:v h264_mediacodec -b:v 4M -t $durationSecs -pix_fmt yuv420p -c:a aac -shortest \"$outputPath\""
+        val command = "-f gif -ignore_loop 0 -i \"$gifPath\" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -vf \"scale=trunc(iw/2)*2:trunc(ih/2)*2\" -c:v hevc_mediacodec -b:v 4M -t $durationSecs -pix_fmt yuv420p -c:a aac -shortest \"$outputPath\""
         return executeCommand(command)
     }
 

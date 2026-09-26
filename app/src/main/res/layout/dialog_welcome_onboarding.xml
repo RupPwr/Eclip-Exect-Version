@@ -141,7 +141,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Overlays &amp; Subtitles"
+                        android:text="Overlays &amp; Text"
                         android:textColor="@color/textColor"
                         android:textSize="14sp"
                         android:fontFamily="sans-serif-medium" />
@@ -149,7 +149,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Multi-layer text, stickers, SRT captions, and keyframe animations"
+                        android:text="Multi-layer text, stickers, and media overlays"
                         android:textColor="@color/inactiveTool"
                         android:textSize="11sp" />
                 </LinearLayout>

@@ -101,20 +101,6 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="1080p" />
-                    
-                <com.google.android.material.chip.Chip
-                    android:id="@+id/chipRes1440"
-                    style="@style/Widget.MaterialComponents.Chip.Choice"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="1440p (2K)" />
-                    
-                <com.google.android.material.chip.Chip
-                    android:id="@+id/chipRes2160"
-                    style="@style/Widget.MaterialComponents.Chip.Choice"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="2160p (4K)" />
             </com.google.android.material.chip.ChipGroup>
         </HorizontalScrollView>
 
@@ -256,11 +242,13 @@
             android:id="@+id/btnSaveProject"
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:layout_marginTop="16dp"
-            android:text="Save Project (.lcprj)"
+            android:layout_marginTop="20dp"
+            android:text="Save Project"
             android:textColor="@color/onPrimaryContainer"
             android:backgroundTint="@color/colorPrimary"
-            app:cornerRadius="12dp"
+            android:fontFamily="sans-serif-medium"
+            android:textSize="16sp"
+            app:cornerRadius="14dp"
             app:icon="@drawable/ic_save_24"
             app:iconTint="@color/onPrimaryContainer"
             app:iconGravity="textStart" />

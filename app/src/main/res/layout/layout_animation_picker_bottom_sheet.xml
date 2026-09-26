@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_bottom_sheet"
+    android:padding="16dp">
+
+    <!-- Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_tool_animation"
+            app:tint="@color/colorPrimary" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:text="Animations"
+            android:textColor="@color/textColor"
+            android:textSize="17sp"
+            android:fontFamily="sans-serif-medium" />
+
+        <ImageButton
+            android:id="@+id/btnCloseAnimationSheet"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_close_24"
+            android:scaleType="centerInside"
+            app:tint="@color/iconSecondary" />
+    </LinearLayout>
+
+    <!-- In / Out Tabs -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:orientation="horizontal"
+        android:background="@drawable/bg_aspect_ratio_item"
+        android:padding="2dp"
+        android:layout_marginBottom="12dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/tabInAnimation"
+            style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:text="In Animation"
+            android:textSize="12sp"
+            android:textColor="#FFFFFF"
+            app:backgroundTint="@color/colorPrimary"
+            app:cornerRadius="8dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/tabOutAnimation"
+            style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:text="Out Animation"
+            android:textSize="12sp"
+            android:textColor="@color/toolTextInactive"
+            app:backgroundTint="@android:color/transparent"
+            app:cornerRadius="8dp" />
+    </LinearLayout>
+
+    <!-- Horizontal Presets Scroll -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:layout_marginBottom="16dp">
+
+        <LinearLayout
+            android:id="@+id/animationPresetsList"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical" />
+    </HorizontalScrollView>
+
+    <!-- Duration Slider -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Duration"
+            android:textColor="@color/toolTextInactive"
+            android:textSize="13sp" />
+
+        <com.google.android.material.slider.Slider
+            android:id="@+id/sliderAnimationDuration"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:valueFrom="0.1"
+            android:valueTo="2.0"
+            android:value="0.5"
+            android:stepSize="0.1"
+            app:thumbColor="@color/colorPrimary"
+            app:trackColorActive="@color/colorPrimary" />
+
+        <TextView
+            android:id="@+id/tvAnimationDurationValue"
+            android:layout_width="45dp"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:text="0.5s"
+            android:textColor="@color/textColor"
+            android:textSize="13sp"
+            android:fontFamily="sans-serif-medium" />
+    </LinearLayout>
+
+    <!-- Apply Button -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnApplyAnimation"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="Apply Animation"
+        android:textColor="#FFFFFF"
+        app:backgroundTint="@color/colorPrimary" />
+</LinearLayout>

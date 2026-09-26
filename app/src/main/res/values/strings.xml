@@ -8,6 +8,7 @@
     <string name="delete">Delete</string>
     <string name="loading">Importing Video…</string>
     <string name="cancel">Cancel</string>
+    <string name="type_here">Type here</string>
     <string name="loading_tag">Buckle up! Your video is loading</string>
     <string name="done">Done</string>
     <string name="str_export_settings">Export Settings</string>
@@ -138,6 +139,7 @@
     <string name="str_view_third_party_software_licenses">View third-party software licenses</string>
     <string name="str_custom_directory">Custom Directory</string>
     <string name="toast_failed_to_set_export_folder">Failed to set export folder</string>
+    <string name="toast_checking_for_updates">Checking for updates in browser…</string>
     <string name="str_video_export_folder">Video Export Folder</string>
     <string name="str_audio_export_folder">Audio Export Folder</string>
     <string name="str_snapshot_export_folder">Snapshot Export Folder</string>
@@ -183,4 +185,7 @@
     <string name="str_select_all">Select All</string>
     <string name="str_deselect_all">Deselect All</string>
     <string name="str_delete_selected_drafts_confirm">Are you sure you want to delete %1$d selected draft(s)?</string>
+    <string name="str_unsupported_resolution_title">Unsupported Resolution</string>
+    <string name="str_unsupported_resolution_warning">यह ऐप केवल 1080p तक के वीडियो को support करता है। 1080p से अधिक resolution वाली वीडियो, जैसे 2K या 4K, supported नहीं हैं।</string>
+    <string name="str_choose_supported_video">वीडियो बदलें (Choose 1080p Video)</string>
 </resources>

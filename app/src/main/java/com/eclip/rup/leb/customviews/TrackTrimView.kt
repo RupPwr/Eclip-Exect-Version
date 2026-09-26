@@ -35,6 +35,14 @@ class TrackTrimView @JvmOverloads constructor(
 
     var trackColor: Int = Color.parseColor("#4285F4") // Default blue
     var trackLabel: String? = null
+        set(value) {
+            if (field != value) {
+                field = value
+                cachedWaveformKey = null
+                cachedTrackLabel = null
+                invalidate()
+            }
+        }
     var isSelectedTrack: Boolean = false
     var isMainVideoTrack: Boolean = false
     var isTrimEnabled: Boolean = true
@@ -44,15 +52,72 @@ class TrackTrimView @JvmOverloads constructor(
     var isPlaceholderTrack: Boolean = false
     var onTrackClicked: (() -> Unit)? = null
     
+    var minAllowedStartMs: Long = 0L
+    var maxAllowedEndMs: Long = 0L
+    var minDurationMs: Long = 200L
+
     var beats: List<Long> = emptyList()
     var internalStartMs: Long = 0L
-    var keyframes: List<Long> = emptyList()
+    var waveformMediaKey: String? = null
+        set(value) {
+            field = value
+            cachedWaveformKey = null
+        }
+    private val waveformManager = com.eclip.rup.leb.utils.PrecomputedWaveformManager()
+    private var cachedWaveformKey: String? = null
+
+    private fun getOrUpdateWaveformKey(): String {
+        val directKey = waveformMediaKey
+        if (directKey != null) return directKey
+        var k = cachedWaveformKey
+        if (k == null) {
+            k = "wave_${trackLabel ?: "track"}_${videoDurationMs}_${audioAmplitudes?.size ?: 0}"
+            cachedWaveformKey = k
+        }
+        return k
+    }
+
     var audioAmplitudes: FloatArray? = null
+        set(value) {
+            field = value
+            cachedWaveformKey = null
+            if (value != null && value.isNotEmpty() && videoDurationMs > 0L) {
+                val key = getOrUpdateWaveformKey()
+                waveformManager.registerWaveform(key, value, videoDurationMs)
+            }
+            invalidate()
+        }
+
+    var renderMode: com.eclip.rup.leb.utils.TimelineRenderMode = com.eclip.rup.leb.utils.TimelineRenderMode.HIGH_FIDELITY
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidate()
+            }
+        }
+
+    private val renderer = com.eclip.rup.leb.utils.HardwareTimelineRenderer()
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         textSize = 24f
         textAlign = Paint.Align.LEFT
+        isFakeBoldText = true
+    }
+
+    private val placeholderTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#8E8E93")
+        isFakeBoldText = false
+        textSize = 24f
+    }
+
+    private val selectionBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+    }
+
+    private val labelTextPaint = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
         isFakeBoldText = true
     }
 
@@ -76,16 +141,168 @@ class TrackTrimView @JvmOverloads constructor(
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
-        strokeWidth = 3f
+        strokeWidth = 1f
     }
     private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         style = Paint.Style.FILL
     }
-    
+    private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#1C1C1E")
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+
     private val rectF = RectF()
     private val thumbnailRectF = RectF()
-    private val handleWidth = 16f
+    private val leftHandleRectF = RectF()
+    private val rightHandleRectF = RectF()
+    private val selectionBorderRectF = RectF()
+    private val leftHandlePath = android.graphics.Path()
+    private val rightHandlePath = android.graphics.Path()
+    private val arrowPath = android.graphics.Path()
+    private val baseHandleWidthDp = 10f
+
+    // Pre-allocated handle radii to avoid per-frame FloatArray allocation
+    private val leftRadii = FloatArray(8)
+    private val rightRadii = FloatArray(8)
+    private var lastCornerRadius = -1f
+
+    private fun updateHandleRadii(cornerRadius: Float) {
+        if (lastCornerRadius == cornerRadius) return
+        lastCornerRadius = cornerRadius
+        leftRadii[0] = cornerRadius
+        leftRadii[1] = cornerRadius
+        leftRadii[2] = 0f
+        leftRadii[3] = 0f
+        leftRadii[4] = 0f
+        leftRadii[5] = 0f
+        leftRadii[6] = cornerRadius
+        leftRadii[7] = cornerRadius
+
+        rightRadii[0] = 0f
+        rightRadii[1] = 0f
+        rightRadii[2] = cornerRadius
+        rightRadii[3] = cornerRadius
+        rightRadii[4] = cornerRadius
+        rightRadii[5] = cornerRadius
+        rightRadii[6] = 0f
+        rightRadii[7] = 0f
+    }
+
+    // Cached ellipsized label text
+    private var cachedTrackLabel: String? = null
+    private var cachedMaxTextWidth: Float = -1f
+    private var cachedEllipsizedText: String = ""
+
+    private var autoScrollDirection = 0 // -1 for left, 1 for right, 0 for none
+    private var autoScrollSpeed = 0f
+    private var parentScrollViewRef: android.widget.HorizontalScrollView? = null
+
+    private fun findParentScrollView(): android.widget.HorizontalScrollView? {
+        if (parentScrollViewRef != null) return parentScrollViewRef
+        var p = parent
+        while (p != null) {
+            if (p is android.widget.HorizontalScrollView) {
+                parentScrollViewRef = p
+                return p
+            }
+            p = p.parent
+        }
+        return null
+    }
+
+    private val autoScrollRunnable = object : Runnable {
+        override fun run() {
+            val parentScroll = findParentScrollView()
+            if (isDraggingHandle && autoScrollDirection != 0 && parentScroll != null) {
+                val scrollStep = (autoScrollSpeed * autoScrollDirection).toInt()
+                if (scrollStep != 0) {
+                    val msPerPixel = customMsPerPixel ?: (if (width > 0) videoDurationMs.toFloat() / width else 1f)
+                    val dtMs = (scrollStep * msPerPixel).toLong()
+
+                    parentScroll.scrollBy(scrollStep, 0)
+
+                    when (dragTarget) {
+                        DragTarget.LEFT -> {
+                            val minStart = minAllowedStartMs.coerceAtLeast(0L)
+                            val maxStart = endTimeMs - minDurationMs
+                            if (maxSelectionDurationMs != null && endTimeMs - (startTimeMs + dtMs) > maxSelectionDurationMs!!) {
+                                startTimeMs = endTimeMs - maxSelectionDurationMs!!
+                            } else {
+                                startTimeMs = (startTimeMs + dtMs).coerceIn(minStart, maxStart.coerceAtLeast(minStart))
+                            }
+                            onTrimAdjusting?.invoke(startTimeMs, endTimeMs)
+                            onTrimAdjustingWithDelta?.invoke(startTimeMs, endTimeMs, dtMs, 0L)
+                        }
+                        DragTarget.RIGHT -> {
+                            val minEnd = startTimeMs + minDurationMs
+                            val limit = if (maxAllowedEndMs > 0L) maxAllowedEndMs else (if (maxDurationMs > 0L) maxDurationMs else videoDurationMs)
+                            if (maxSelectionDurationMs != null && (endTimeMs + dtMs) - startTimeMs > maxSelectionDurationMs!!) {
+                                endTimeMs = startTimeMs + maxSelectionDurationMs!!
+                            } else {
+                                endTimeMs = (endTimeMs + dtMs).coerceIn(minEnd, limit.coerceAtLeast(minEnd))
+                            }
+                            onTrimAdjusting?.invoke(startTimeMs, endTimeMs)
+                            onTrimAdjustingWithDelta?.invoke(startTimeMs, endTimeMs, 0L, dtMs)
+                        }
+                        else -> {}
+                    }
+                    invalidate()
+                }
+                postOnAnimation(this)
+            } else {
+                autoScrollDirection = 0
+            }
+        }
+    }
+
+    private fun checkEdgeAutoScroll(event: MotionEvent) {
+        val parentScroll = findParentScrollView() ?: return
+        val density = resources.displayMetrics.density
+        val edgeZone = 44f * density
+
+        val parentLocation = IntArray(2)
+        parentScroll.getLocationOnScreen(parentLocation)
+        val parentLeftOnScreen = parentLocation[0]
+        val parentRightOnScreen = parentLocation[0] + parentScroll.width
+
+        val viewLocation = IntArray(2)
+        getLocationOnScreen(viewLocation)
+        val rawX = viewLocation[0] + event.x
+
+        when {
+            rawX <= parentLeftOnScreen + edgeZone -> {
+                val proximity = ((parentLeftOnScreen + edgeZone - rawX) / edgeZone).coerceIn(0f, 1f)
+                autoScrollSpeed = (6f + proximity * 18f) * density
+                if (autoScrollDirection != -1) {
+                    autoScrollDirection = -1
+                    removeCallbacks(autoScrollRunnable)
+                    postOnAnimation(autoScrollRunnable)
+                }
+            }
+            rawX >= parentRightOnScreen - edgeZone -> {
+                val proximity = ((rawX - (parentRightOnScreen - edgeZone)) / edgeZone).coerceIn(0f, 1f)
+                autoScrollSpeed = (6f + proximity * 18f) * density
+                if (autoScrollDirection != 1) {
+                    autoScrollDirection = 1
+                    removeCallbacks(autoScrollRunnable)
+                    postOnAnimation(autoScrollRunnable)
+                }
+            }
+            else -> {
+                stopAutoScroll()
+            }
+        }
+    }
+
+    private fun stopAutoScroll() {
+        if (autoScrollDirection != 0) {
+            autoScrollDirection = 0
+            removeCallbacks(autoScrollRunnable)
+        }
+    }
 
     private val touchSlop by lazy {
         android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
@@ -93,36 +310,28 @@ class TrackTrimView @JvmOverloads constructor(
     private var downTouchX = 0f
     private var downTouchY = 0f
     private var lastTouchX = 0f
+    private var downRawX = 0f
+    private var lastRawX = 0f
     private var hasDisallowedParent = false
     private var dragTarget = DragTarget.NONE
     
-    private var handleScaleAnimator: android.animation.ValueAnimator? = null
-    private var currentHandleScale = 1.0f
-
     private var isDraggingHandle = false
         set(value) {
             if (field != value) {
                 field = value
-                val targetScale = if (value) 1.5f else 1.0f
-                handleScaleAnimator?.cancel()
-                handleScaleAnimator = android.animation.ValueAnimator.ofFloat(currentHandleScale, targetScale).apply {
-                    duration = 150
-                    addUpdateListener {
-                        currentHandleScale = it.animatedValue as Float
-                        invalidate()
-                    }
-                    start()
-                }
-                
                 if (value) {
                     performAppHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
                 } else {
                     performAppHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
                 }
+                invalidate()
             }
         }
 
     fun setRange(videoDurationMs: Long, startTimeMs: Long, endTimeMs: Long) {
+        if (this.videoDurationMs != videoDurationMs) {
+            cachedWaveformKey = null
+        }
         this.videoDurationMs = videoDurationMs
         this.startTimeMs = startTimeMs.coerceIn(0L, videoDurationMs)
         this.endTimeMs = endTimeMs.coerceIn(this.startTimeMs, videoDurationMs)
@@ -162,11 +371,7 @@ class TrackTrimView @JvmOverloads constructor(
             }
 
             if (trackLabel != null) {
-                val placeholderTextPaint = Paint(textPaint).apply {
-                    color = Color.parseColor("#8E8E93")
-                    isFakeBoldText = false
-                    textSize = 10f * density
-                }
+                placeholderTextPaint.textSize = 10f * density
                 val textY = height / 2f - (placeholderTextPaint.descent() + placeholderTextPaint.ascent()) / 2f
                 canvas.drawText(trackLabel!!, textStartX, textY, placeholderTextPaint)
             }
@@ -174,59 +379,40 @@ class TrackTrimView @JvmOverloads constructor(
         }
         
         // Draw track fill
-        if (isMainVideoTrack) {
-            if (isSelectedTrack) {
-                if (isTrimEnabled) {
-                    // Draw a thick border enclosing the active range when selected
-                    borderPaint.color = Color.parseColor("#FF4081")
-                    borderPaint.strokeWidth = 3f * density
-                    canvas.drawRect(rectF, borderPaint)
-                } else {
-                    borderPaint.color = Color.parseColor("#FF4081")
-                    borderPaint.strokeWidth = 3f * density
-                    val inset = borderPaint.strokeWidth / 2f
-                    val selRect = RectF(rectF.left + inset, rectF.top + inset, rectF.right - inset, rectF.bottom - inset)
-                    canvas.drawRect(selRect, borderPaint)
-                }
-            }
-        } else {
-            trackPaint.color = trackColor
-            trackPaint.alpha = 240
-            canvas.drawRoundRect(rectF, cornerRadius, cornerRadius, trackPaint)
+        if (!isMainVideoTrack) {
+            renderer.drawClip(canvas, rectF, cornerRadius, trackColor, false, renderMode)
         }
 
-        // Draw Audio Wave Background
+        // Draw Audio Wave Background using Precomputed Waveform Architecture
         if (isAudioTrack) {
             canvas.save()
             canvas.clipRect(rectF)
             val centerY = height / 2f
             val maxAmplitude = height * 0.38f
             
+            val contentStart = if (isSelectedTrack && isTrimEnabled) startX + baseHandleWidthDp * density else startX
+            val contentEnd = if (isSelectedTrack && isTrimEnabled) endX - baseHandleWidthDp * density else endX
+
             if (audioAmplitudes != null && audioAmplitudes!!.isNotEmpty()) {
-                val amps = audioAmplitudes!!
-                var x = startX + handleWidth + 2f * density
-                val waveSpacing = 3f * density
-                
-                while (x < endX - handleWidth) {
-                    val relativeTimeMs = ((x - startX) * msPerPixel).toLong()
-                    val index = ((relativeTimeMs.toFloat() / videoDurationMs) * amps.size).toInt()
-                    
-                    val ampValue = if (index in amps.indices) amps[index] else 0.0f
-                    val amplitude = maxAmplitude * ampValue
-                    
-                    if (amplitude > 1f) {
-                        canvas.drawLine(x, centerY - amplitude, x, centerY + amplitude, wavePaint)
-                    } else {
-                        canvas.drawLine(x, centerY - 1.5f * density, x, centerY + 1.5f * density, wavePaint)
-                    }
-                    x += waveSpacing
-                }
+                val key = getOrUpdateWaveformKey()
+                waveformManager.drawVisibleWaveform(
+                    canvas,
+                    key,
+                    contentStart,
+                    contentEnd,
+                    0f,
+                    width.toFloat(),
+                    msPerPixel,
+                    height.toFloat(),
+                    wavePaint,
+                    density
+                )
             } else {
-                // Fallback to procedural wave if no data
-                var x = startX + handleWidth + 2f * density
-                val waveSpacing = 6f * density
+                // Fallback to lightweight procedural wave if no data
+                var x = contentStart + 2f * density
+                val waveSpacing = if (renderMode == com.eclip.rup.leb.utils.TimelineRenderMode.HIGH_VELOCITY) 10f * density else 6f * density
                 var timeOffset = 0f
-                while (x < endX - handleWidth) {
+                while (x < contentEnd) {
                     val amplitude = maxAmplitude * (0.3f + 0.7f * Math.abs(Math.sin((x + timeOffset) * 0.05).toFloat()))
                     canvas.drawLine(x, centerY - amplitude, x, centerY + amplitude, wavePaint)
                     x += waveSpacing
@@ -254,55 +440,9 @@ class TrackTrimView @JvmOverloads constructor(
             canvas.restore()
         }
 
-        // Draw Keyframe Markers
-        if (keyframes.isNotEmpty()) {
-            canvas.save()
-            canvas.clipRect(rectF)
-            val kfPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#FFD700") // Gold color for keyframes
-                style = Paint.Style.FILL
-            }
-            val size = 8f * density
-            val halfSize = size / 2f
-            val yPos = height - 6f * density
-            val diamondPath = android.graphics.Path()
-
-            for (kfTimeMs in keyframes) {
-                val kfX = startX + (kfTimeMs / msPerPixel)
-                if (kfX >= startX && kfX <= endX) {
-                    diamondPath.reset()
-                    diamondPath.moveTo(kfX, yPos - halfSize)
-                    diamondPath.lineTo(kfX + halfSize, yPos)
-                    diamondPath.lineTo(kfX, yPos + halfSize)
-                    diamondPath.lineTo(kfX - halfSize, yPos)
-                    diamondPath.close()
-                    canvas.drawPath(diamondPath, kfPaint)
-                }
-            }
-            canvas.restore()
-        }
-        
-        // Draw track border
-        if (!isMainVideoTrack) {
-            if (isSelectedTrack) {
-                borderPaint.color = Color.parseColor("#FF4081") // Vibrant pink selection accent
-                borderPaint.strokeWidth = 2.5f * density
-                canvas.drawRoundRect(rectF, cornerRadius, cornerRadius, borderPaint)
-                
-                val selectionOverlayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = Color.parseColor("#1AFF4081")
-                    style = Paint.Style.FILL
-                }
-                canvas.drawRoundRect(rectF, cornerRadius, cornerRadius, selectionOverlayPaint)
-            } else {
-                borderPaint.color = Color.parseColor("#26FFFFFF") // Subtle outline
-                borderPaint.strokeWidth = 1f * density
-                canvas.drawRoundRect(rectF, cornerRadius, cornerRadius, borderPaint)
-            }
-        }
-
         // Draw Icon, Thumbnail, and Label if available
-        var textStartX = startX + handleWidth + 6f * density
+        val currentHandleW = if (isSelectedTrack && isTrimEnabled) baseHandleWidthDp * density else 0f
+        var textStartX = startX + currentHandleW + 6f * density
         val iconSize = (height * 0.55f).toInt().coerceIn(12, 22)
         val iconTop = (height - iconSize) / 2
 
@@ -322,48 +462,102 @@ class TrackTrimView @JvmOverloads constructor(
 
         if (trackLabel != null) {
             val padding = 8f * density
-            val maxTextWidth = (endX - startX) - (textStartX - startX) - handleWidth - padding
+            val maxTextWidth = (endX - startX) - (textStartX - startX) - currentHandleW - padding
             if (maxTextWidth > 12f) {
-                val textPaintObj = android.text.TextPaint(textPaint).apply {
-                    textSize = 10f * density
+                labelTextPaint.textSize = 10f * density
+                if (trackLabel != cachedTrackLabel || kotlin.math.abs(maxTextWidth - cachedMaxTextWidth) > 1f) {
+                    cachedTrackLabel = trackLabel
+                    cachedMaxTextWidth = maxTextWidth
+                    cachedEllipsizedText = android.text.TextUtils.ellipsize(
+                        trackLabel,
+                        labelTextPaint,
+                        maxTextWidth,
+                        android.text.TextUtils.TruncateAt.END
+                    ).toString()
                 }
-                val textToDraw = android.text.TextUtils.ellipsize(
-                    trackLabel,
-                    textPaintObj,
-                    maxTextWidth,
-                    android.text.TextUtils.TruncateAt.END
-                ).toString()
                 
-                val textY = height / 2f - (textPaintObj.descent() + textPaintObj.ascent()) / 2f
-                canvas.drawText(textToDraw, textStartX, textY, textPaintObj)
+                val textY = height / 2f - (labelTextPaint.descent() + labelTextPaint.ascent()) / 2f
+                canvas.drawText(cachedEllipsizedText, textStartX, textY, labelTextPaint)
             }
         }
 
-        if (isTrimEnabled) {
-            val currentHandleWidth = handleWidth * currentHandleScale
-            if (isMainVideoTrack) {
-                handlePaint.color = Color.parseColor("#FF4081")
-            } else {
-                handlePaint.color = Color.WHITE
-            }
-            // Draw left handle
-            canvas.drawRect(startX, 0f, startX + currentHandleWidth, height.toFloat(), handlePaint)
-            // Draw right handle
-            canvas.drawRect(endX - currentHandleWidth, 0f, endX, height.toFloat(), handlePaint)
+        // Draw Selection Outline and connected Trim Handles (<────────────>)
+        if (isSelectedTrack) {
+            val strokeW = 1.5f * density
+            val currentHandleWidth = if (isTrimEnabled) {
+                (baseHandleWidthDp * density).coerceAtMost(((endX - startX) / 2f).coerceAtLeast(0f))
+            } else 0f
 
-            // Draw vertical grip line on the handles
-            val gripPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#4D000000") // Subtle dark overlay for grips
-                style = Paint.Style.STROKE
-                strokeWidth = 1.5f * density
+            selectionBorderPaint.color = Color.WHITE
+            selectionBorderPaint.strokeWidth = strokeW
+            selectionBorderPaint.style = Paint.Style.STROKE
+
+            if (isTrimEnabled && currentHandleWidth > 0f) {
+                val halfStroke = strokeW / 2f
+
+                // 1. Top & bottom connecting thin white outline lines between handles
+                val lineStart = startX + currentHandleWidth - 1f
+                val lineEnd = endX - currentHandleWidth + 1f
+                if (lineEnd > lineStart) {
+                    canvas.drawLine(lineStart, halfStroke, lineEnd, halfStroke, selectionBorderPaint)
+                    canvas.drawLine(lineStart, height.toFloat() - halfStroke, lineEnd, height.toFloat() - halfStroke, selectionBorderPaint)
+                }
+
+                val handleRadius = cornerRadius.coerceAtMost(currentHandleWidth)
+                updateHandleRadii(handleRadius)
+
+                // 2. Left Trim Handle (<)
+                leftHandlePath.reset()
+                leftHandleRectF.set(startX, 0f, startX + currentHandleWidth, height.toFloat())
+                leftHandlePath.addRoundRect(leftHandleRectF, leftRadii, android.graphics.Path.Direction.CW)
+                handlePaint.color = Color.WHITE
+                handlePaint.style = Paint.Style.FILL
+                canvas.drawPath(leftHandlePath, handlePaint)
+
+                // Left Chevron Arrow (<)
+                if (currentHandleWidth > 4f * density) {
+                    arrowPaint.strokeWidth = 1.6f * density
+                    arrowPaint.color = Color.parseColor("#1C1C1E")
+                    val arrowSize = 3.5f * density
+                    val leftMidX = startX + currentHandleWidth / 2f
+                    val midY = height / 2f
+                    arrowPath.reset()
+                    arrowPath.moveTo(leftMidX + arrowSize * 0.45f, midY - arrowSize)
+                    arrowPath.lineTo(leftMidX - arrowSize * 0.45f, midY)
+                    arrowPath.lineTo(leftMidX + arrowSize * 0.45f, midY + arrowSize)
+                    canvas.drawPath(arrowPath, arrowPaint)
+                }
+
+                // 3. Right Trim Handle (>)
+                rightHandlePath.reset()
+                rightHandleRectF.set(endX - currentHandleWidth, 0f, endX, height.toFloat())
+                rightHandlePath.addRoundRect(rightHandleRectF, rightRadii, android.graphics.Path.Direction.CW)
+                canvas.drawPath(rightHandlePath, handlePaint)
+
+                // Right Chevron Arrow (>)
+                if (currentHandleWidth > 4f * density) {
+                    val rightMidX = endX - currentHandleWidth / 2f
+                    val midY = height / 2f
+                    val arrowSize = 3.5f * density
+                    arrowPath.reset()
+                    arrowPath.moveTo(rightMidX - arrowSize * 0.45f, midY - arrowSize)
+                    arrowPath.lineTo(rightMidX + arrowSize * 0.45f, midY)
+                    arrowPath.lineTo(rightMidX - arrowSize * 0.45f, midY + arrowSize)
+                    canvas.drawPath(arrowPath, arrowPaint)
+                }
+            } else {
+                // If trimming not enabled, draw complete thin selection outline
+                val halfStroke = strokeW / 2f
+                selectionBorderRectF.set(startX + halfStroke, halfStroke, endX - halfStroke, height.toFloat() - halfStroke)
+                canvas.drawRoundRect(selectionBorderRectF, cornerRadius, cornerRadius, selectionBorderPaint)
             }
-            // Left handle grip line
-            val leftMidX = startX + currentHandleWidth / 2f
-            canvas.drawLine(leftMidX, height * 0.3f, leftMidX, height * 0.7f, gripPaint)
-            
-            // Right handle grip line
-            val rightMidX = endX - currentHandleWidth / 2f
-            canvas.drawLine(rightMidX, height * 0.3f, rightMidX, height * 0.7f, gripPaint)
+        } else {
+            // Subtle unselected outline
+            borderPaint.color = Color.parseColor("#26FFFFFF")
+            borderPaint.strokeWidth = 1f * density
+            val halfStroke = (1f * density) / 2f
+            selectionBorderRectF.set(startX + halfStroke, halfStroke, endX - halfStroke, height.toFloat() - halfStroke)
+            canvas.drawRoundRect(selectionBorderRectF, cornerRadius, cornerRadius, borderPaint)
         }
     }
 
@@ -375,21 +569,33 @@ class TrackTrimView @JvmOverloads constructor(
         val startX = startTimeMs / msPerPixel
         val endX = endTimeMs / msPerPixel
         val density = resources.displayMetrics.density
-        val handleTouchMargin = 20f * density
+        val baseHandleWidth = (baseHandleWidthDp * density).coerceAtMost(((endX - startX) / 2f).coerceAtLeast(0f))
+        val handleTouchMargin = 22f * density
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downTouchX = event.x
                 downTouchY = event.y
                 lastTouchX = event.x
+                downRawX = event.rawX
+                lastRawX = event.rawX
                 hasDisallowedParent = false
                 isDraggingHandle = false
+                stopAutoScroll()
 
-                dragTarget = if (isTrimEnabled) {
-                    when {
-                        event.x >= startX - handleTouchMargin && event.x <= startX + handleWidth + handleTouchMargin -> DragTarget.LEFT
-                        event.x >= endX - handleWidth - handleTouchMargin && event.x <= endX + handleTouchMargin -> DragTarget.RIGHT
-                        else -> DragTarget.CENTER
+                val distToLeft = Math.abs(event.x - (startX + baseHandleWidth / 2f))
+                val distToRight = Math.abs(event.x - (endX - baseHandleWidth / 2f))
+                val effectiveTouchMargin = 28f * density
+                val nearLeft = distToLeft <= baseHandleWidth / 2f + effectiveTouchMargin
+                val nearRight = distToRight <= baseHandleWidth / 2f + effectiveTouchMargin
+
+                dragTarget = if (isTrimEnabled && (nearLeft || nearRight)) {
+                    if (nearLeft && nearRight) {
+                        if (distToLeft <= distToRight) DragTarget.LEFT else DragTarget.RIGHT
+                    } else if (nearLeft) {
+                        DragTarget.LEFT
+                    } else {
+                        DragTarget.RIGHT
                     }
                 } else {
                     DragTarget.CENTER
@@ -398,11 +604,11 @@ class TrackTrimView @JvmOverloads constructor(
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                val dx = event.x - downTouchX
+                val dx = event.rawX - downRawX
                 val dy = event.y - downTouchY
                 val absDx = Math.abs(dx)
                 val absDy = Math.abs(dy)
-                val stepDx = event.x - lastTouchX
+                val stepDx = event.rawX - lastRawX
                 val dtMs = (stepDx * msPerPixel).toLong()
 
                 if (isTrimEnabled && (dragTarget == DragTarget.LEFT || dragTarget == DragTarget.RIGHT)) {
@@ -417,8 +623,8 @@ class TrackTrimView @JvmOverloads constructor(
 
                         when (dragTarget) {
                             DragTarget.LEFT -> {
-                                val minStart = 0L
-                                val maxStart = endTimeMs - 100L
+                                val minStart = minAllowedStartMs.coerceAtLeast(0L)
+                                val maxStart = endTimeMs - minDurationMs
                                 if (maxSelectionDurationMs != null && endTimeMs - (startTimeMs + dtMs) > maxSelectionDurationMs!!) {
                                     startTimeMs = endTimeMs - maxSelectionDurationMs!!
                                 } else {
@@ -426,8 +632,8 @@ class TrackTrimView @JvmOverloads constructor(
                                 }
                             }
                             DragTarget.RIGHT -> {
-                                val minEnd = startTimeMs + 100L
-                                val limit = if (maxDurationMs > 0L) maxDurationMs else videoDurationMs
+                                val minEnd = startTimeMs + minDurationMs
+                                val limit = if (maxAllowedEndMs > 0L) maxAllowedEndMs else (if (maxDurationMs > 0L) maxDurationMs else videoDurationMs)
                                 if (maxSelectionDurationMs != null && (endTimeMs + dtMs) - startTimeMs > maxSelectionDurationMs!!) {
                                     endTimeMs = startTimeMs + maxSelectionDurationMs!!
                                 } else {
@@ -437,6 +643,7 @@ class TrackTrimView @JvmOverloads constructor(
                             else -> {}
                         }
 
+                        lastRawX = event.rawX
                         lastTouchX = event.x
                         invalidate()
                         onTrimAdjusting?.invoke(startTimeMs, endTimeMs)
@@ -446,9 +653,13 @@ class TrackTrimView @JvmOverloads constructor(
                             if (dragTarget == DragTarget.LEFT) dtMs else 0L,
                             if (dragTarget == DragTarget.RIGHT) dtMs else 0L
                         )
+
+                        // Check screen edge auto-scrolling
+                        checkEdgeAutoScroll(event)
                         return true
                     } else if (absDy > touchSlop && absDy > absDx && !hasDisallowedParent) {
                         // User is swiping vertically -> let ScrollView intercept
+                        stopAutoScroll()
                         return false
                     }
                     return true
@@ -458,7 +669,8 @@ class TrackTrimView @JvmOverloads constructor(
                 }
             }
             MotionEvent.ACTION_UP -> {
-                val dx = event.x - downTouchX
+                stopAutoScroll()
+                val dx = event.rawX - downRawX
                 val dy = event.y - downTouchY
                 val absDx = Math.abs(dx)
                 val absDy = Math.abs(dy)
@@ -481,6 +693,7 @@ class TrackTrimView @JvmOverloads constructor(
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
+                stopAutoScroll()
                 if (hasDisallowedParent) {
                     parent?.requestDisallowInterceptTouchEvent(false)
                     onDragStateChanged?.invoke(false)
@@ -492,6 +705,20 @@ class TrackTrimView @JvmOverloads constructor(
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    override fun onDetachedFromWindow() {
+        // Safety reset: if view is detached while drag is in progress, notify the callback
+        // so isTrackDragging doesn't get stuck true in the host Activity.
+        stopAutoScroll()
+        if (hasDisallowedParent || isDraggingHandle) {
+            parent?.requestDisallowInterceptTouchEvent(false)
+            onDragStateChanged?.invoke(false)
+            isDraggingHandle = false
+            hasDisallowedParent = false
+            dragTarget = DragTarget.NONE
+        }
+        super.onDetachedFromWindow()
     }
 
     override fun performClick(): Boolean {

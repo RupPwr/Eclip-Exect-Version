@@ -4,11 +4,93 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="16dp"
-    android:background="@drawable/bg_bottom_nav_floating"
-    android:elevation="12dp"
-    android:layout_marginHorizontal="16dp"
-    android:layout_marginBottom="8dp">
+    android:padding="16dp">
+
+    <!-- Text Style Formatting (Bold | Italic | Underline | AA) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:layout_width="100dp"
+            android:layout_height="wrap_content"
+            android:text="Style"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <!-- Bold Button -->
+            <TextView
+                android:id="@+id/btnFormatBold"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="B"
+                android:textStyle="bold"
+                android:textSize="16sp"
+                android:textColor="#8A8A93"
+                android:background="@drawable/tool_button_inactive"
+                android:clickable="true"
+                android:focusable="true"
+                android:layout_marginEnd="6dp" />
+
+            <!-- Italic Button -->
+            <TextView
+                android:id="@+id/btnFormatItalic"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="I"
+                android:textStyle="italic"
+                android:textSize="16sp"
+                android:textColor="#8A8A93"
+                android:background="@drawable/tool_button_inactive"
+                android:clickable="true"
+                android:focusable="true"
+                android:layout_marginEnd="6dp" />
+
+            <!-- Underline Button -->
+            <TextView
+                android:id="@+id/btnFormatUnderline"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="U"
+                android:textSize="16sp"
+                android:textColor="#8A8A93"
+                android:background="@drawable/tool_button_inactive"
+                android:clickable="true"
+                android:focusable="true"
+                android:layout_marginEnd="6dp" />
+
+            <!-- AA (Case) Button -->
+            <TextView
+                android:id="@+id/btnFormatCase"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="Aa"
+                android:textSize="14sp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="#8A8A93"
+                android:background="@drawable/tool_button_inactive"
+                android:clickable="true"
+                android:focusable="true" />
+        </LinearLayout>
+    </LinearLayout>
 
     <!-- Fonts -->
     <LinearLayout
@@ -96,9 +178,9 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:valueFrom="0"
-            android:valueTo="20"
+            android:valueTo="100"
             android:stepSize="1"
-            android:value="0" />
+            android:value="15" />
     </LinearLayout>
 
     <!-- Letter Spacing -->

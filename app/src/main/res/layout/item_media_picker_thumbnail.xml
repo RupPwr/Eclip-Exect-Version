@@ -1,154 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<com.eclip.rup.leb.customviews.SquareFrameLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/layoutGridContainer"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:padding="1dp"
     android:clickable="true"
     android:focusable="true">
 
-    <!-- 4-Column Grid Mode (Videos / Photos) - Perfect 1:1 Square -->
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:id="@+id/layoutGridContainer"
+    <ImageView
+        android:id="@+id/ivThumbnail"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="1dp"
-        android:visibility="visible">
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:background="#1E1E24" />
 
-        <ImageView
-            android:id="@+id/ivThumbnail"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:scaleType="centerCrop"
-            android:background="#1E1E24"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintDimensionRatio="1:1" />
+    <!-- Gradient overlay at bottom for duration readability -->
+    <View
+        android:id="@+id/vGradient"
+        android:layout_width="match_parent"
+        android:layout_height="28dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/bg_media_gradient" />
 
-        <!-- Gradient overlay at bottom for duration readability -->
-        <View
-            android:id="@+id/vGradient"
-            android:layout_width="0dp"
-            android:layout_height="28dp"
-            android:background="@drawable/bg_media_gradient"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
+    <!-- Selected Tint Overlay (Darkens thumbnail when selected) -->
+    <View
+        android:id="@+id/vSelectedOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#60000000"
+        android:visibility="gone" />
 
-        <!-- Selected Tint Overlay (Darkens thumbnail when selected) -->
-        <View
-            android:id="@+id/vSelectedOverlay"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:background="#60000000"
-            android:visibility="gone"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
+    <!-- Selection Badge at Top-Right -->
+    <FrameLayout
+        android:id="@+id/layoutSelectionBadge"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="5dp"
+        android:layout_marginEnd="5dp"
+        android:background="@drawable/bg_gallery_unselected_badge">
 
-        <!-- Selection Badge at Top-Right -->
-        <FrameLayout
-            android:id="@+id/layoutSelectionBadge"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:layout_marginTop="5dp"
-            android:layout_marginEnd="5dp"
-            android:background="@drawable/bg_gallery_unselected_badge"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintEnd_toEndOf="parent">
-
-            <TextView
-                android:id="@+id/tvSelectionNumber"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
-        </FrameLayout>
-
-        <!-- Video Duration Badge at Bottom-Left -->
         <TextView
-            android:id="@+id/tvDuration"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="5dp"
-            android:layout_marginBottom="4dp"
-            android:shadowColor="#CC000000"
-            android:shadowDx="0"
-            android:shadowDy="1"
-            android:shadowRadius="2"
+            android:id="@+id/tvSelectionNumber"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
             android:textColor="#FFFFFF"
             android:textSize="11sp"
             android:textStyle="bold"
-            android:visibility="gone"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
+            android:visibility="gone" />
+    </FrameLayout>
 
-    </androidx.constraintlayout.widget.ConstraintLayout>
-
-    <!-- Audio List Row Mode -->
-    <LinearLayout
-        android:id="@+id/layoutAudioContainer"
-        android:layout_width="match_parent"
+    <!-- Video Duration Badge at Bottom-Left -->
+    <TextView
+        android:id="@+id/tvDuration"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingHorizontal="14dp"
-        android:paddingVertical="10dp"
-        android:visibility="gone">
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="5dp"
+        android:layout_marginBottom="4dp"
+        android:shadowColor="#CC000000"
+        android:shadowDx="0"
+        android:shadowDy="1"
+        android:shadowRadius="2"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
 
-        <com.google.android.material.imageview.ShapeableImageView
-            android:id="@+id/ivAudioCover"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
-            android:scaleType="centerCrop"
-            android:background="#222222"
-            android:padding="10dp"
-            android:src="@drawable/ic_audio_24"
-            app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Small"
-            app:tint="#FFFFFF" />
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:layout_marginStart="12dp"
-            android:layout_marginEnd="8dp">
-
-            <TextView
-                android:id="@+id/tvAudioTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:maxLines="1"
-                android:ellipsize="end" />
-
-            <TextView
-                android:id="@+id/tvAudioSubTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:textColor="#8A8A93"
-                android:textSize="12sp"
-                android:maxLines="1"
-                android:ellipsize="end" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/tvAudioDuration"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="#8A8A93"
-            android:textSize="12sp"
-            android:textStyle="bold" />
-
-    </LinearLayout>
-
-</FrameLayout>
+</com.eclip.rup.leb.customviews.SquareFrameLayout>

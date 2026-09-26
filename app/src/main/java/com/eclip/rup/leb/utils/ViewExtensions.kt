@@ -33,6 +33,7 @@ fun View.performAppHapticFeedback(
  */
 fun View.setBounceClickListener(onClick: () -> Unit) {
     this.setOnTouchListener { v, event ->
+        if (!v.isEnabled) return@setOnTouchListener false
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 v.animate().scaleX(0.92f).scaleY(0.92f).setDuration(100).start()

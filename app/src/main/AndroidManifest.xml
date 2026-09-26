@@ -26,6 +26,7 @@
     <application
         android:name=".EclipApplication"
         android:allowBackup="true"
+        android:enableOnBackInvokedCallback="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -72,17 +73,20 @@
             android:theme="@style/AppTheme" />
 
         <activity
+            android:name=".ExportActivity"
+            android:exported="false"
+            android:theme="@style/Editor"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize" />
+
+        <activity
             android:name=".ErrorDisplayActivity"
             android:exported="false"
             android:theme="@style/Editor" />
 
-        <service
-            android:name=".services.ExportService"
-            android:foregroundServiceType="dataSync"
-            android:exported="false" />
+
             
         <service
-            android:name=".services.ProxyGenerationService"
+            android:name=".services.ExportService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
     </application>

@@ -82,7 +82,7 @@ class UpdateOperationCommand(
 
 /**
  * Replaces all operations of a specific class. Used for effects that 
- * might need total replacement, like clearing and setting new subtitles.
+ * might need total replacement, like clearing and setting new items.
  */
 class ReplaceAllOfTypeCommand(
     private val operationClass: Class<out EditOperation>,

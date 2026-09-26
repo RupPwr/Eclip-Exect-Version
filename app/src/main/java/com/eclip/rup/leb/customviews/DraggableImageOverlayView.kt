@@ -373,11 +373,25 @@ class DraggableImageOverlayView @JvmOverloads constructor(
                 }
             } else if (isVideo) {
                 try {
-                    val retriever = android.media.MediaMetadataRetriever()
-                    retriever.setDataSource(path)
-                    val bitmap = retriever.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    imageView.setImageBitmap(bitmap)
-                    retriever.release()
+                    val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main)
+                    scope.launch {
+                        var bitmap: android.graphics.Bitmap? = null
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            try {
+                                val retriever = android.media.MediaMetadataRetriever()
+                                retriever.setDataSource(path)
+                                bitmap = com.eclip.rup.leb.utils.CodecInstancePool.withHardwareCodecPermit {
+                                    retriever.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                                }
+                                retriever.release()
+                            } catch (e: Exception) {}
+                        }
+                        if (bitmap != null) {
+                            imageView.setImageBitmap(bitmap)
+                        } else {
+                            imageView.setImageURI(uri)
+                        }
+                    }
                 } catch (e: Exception) {
                     imageView.setImageURI(uri)
                 }
@@ -439,13 +453,14 @@ class DraggableImageOverlayView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 val touchX = ev.x
                 val touchY = ev.y
-                val imgLeft = imageView.left.toFloat()
-                val imgTop = imageView.top.toFloat()
-                val imgRight = imageView.right.toFloat()
-                val imgBottom = imageView.bottom.toFloat()
+                val imgLeft = imageView.x
+                val imgTop = imageView.y
+                val imgRight = imgLeft + imageView.width
+                val imgBottom = imgTop + imageView.height
+                val pad = 16f * resources.displayMetrics.density
 
                 // Check if touch is inside the image bounds
-                if (touchX in imgLeft..imgRight && touchY in imgTop..imgBottom) {
+                if (touchX in (imgLeft - pad)..(imgRight + pad) && touchY in (imgTop - pad)..(imgBottom + pad)) {
                     if (isColorPickingMode) {
                         return true
                     }
@@ -457,6 +472,23 @@ class DraggableImageOverlayView @JvmOverloads constructor(
             }
         }
         return false
+    }
+
+    /** Check if a given screen-coordinate touch falls on the active image overlay or its handles. */
+    fun isTouchOnImageOrHandles(rawX: Float, rawY: Float): Boolean {
+        if (!isEditingActive || visibility != VISIBLE) return false
+        val location = IntArray(2)
+        getLocationOnScreen(location)
+        val touchX = rawX - location[0]
+        val touchY = rawY - location[1]
+
+        val imgLeft = imageView.x
+        val imgTop = imageView.y
+        val imgRight = imgLeft + imageView.width
+        val imgBottom = imgTop + imageView.height
+        val pad = 16f * resources.displayMetrics.density
+
+        return touchX in (imgLeft - pad)..(imgRight + pad) && touchY in (imgTop - pad)..(imgBottom + pad)
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -476,6 +508,19 @@ class DraggableImageOverlayView @JvmOverloads constructor(
                     pickColorAt(event.x, event.y)
                     return true
                 }
+                val touchX = event.x
+                val touchY = event.y
+                val imgLeft = imageView.x
+                val imgTop = imageView.y
+                val imgRight = imgLeft + imageView.width
+                val imgBottom = imgTop + imageView.height
+                val pad = 16f * resources.displayMetrics.density
+
+                if (touchX !in (imgLeft - pad)..(imgRight + pad) || touchY !in (imgTop - pad)..(imgBottom + pad)) {
+                    isDragging = false
+                    return false
+                }
+
                 isDragging = true
                 if (isMaskEditingMode) {
                     dragOffsetX = event.x

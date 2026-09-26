@@ -22,6 +22,14 @@ fun VideoEditingViewModel.updateMainVideoMirror(isMirrored: Boolean) {
     executeCommand(ReplaceUniqueOperationCommand(EditOperation.MirrorMain(isMirrored), "Mirror Video"))
 }
 
+fun VideoEditingViewModel.updateMainVideoRotation(rotation: Int) {
+    executeCommand(ReplaceUniqueOperationCommand(EditOperation.RotationMain(rotation), "Rotate Video"))
+}
+
+fun VideoEditingViewModel.updateMainVideoOpacity(opacity: Float) {
+    executeCommand(ReplaceUniqueOperationCommand(EditOperation.OpacityMain(opacity), "Clip Opacity"))
+}
+
 fun VideoEditingViewModel.toggleMergeItemMirror(index: Int) {
     executeCommand(MutateListCommand("Mirror Clip") { ops ->
         val mergeIdx = ops.indexOfFirst { it is EditOperation.Merge }
@@ -60,15 +68,27 @@ fun VideoEditingViewModel.updateCanvasBackgroundOperation(
 
 fun VideoEditingViewModel.addTextOperation(
     text: String, fontSize: Int, position: String, relativeX: Float? = null,
-    relativeY: Float? = null, color: String = "#FFFFFF", startTimeMs: Long? = null,
+    relativeY: Float? = null, relativeWidth: Float? = null, color: String = "#FFFFFF", startTimeMs: Long? = null,
     endTimeMs: Long? = null, fontPath: String? = null, opacity: Float = 1.0f,
     borderThickness: Int = 0, borderColor: String = "#000000", textAlign: String = "center",
-    letterSpacing: Float = 0f, lineSpacing: Float = 0f
+    letterSpacing: Float = 0f, lineSpacing: Float = 0f,
+    inAnimation: String = "NONE", outAnimation: String = "NONE", animationDurationMs: Long = 500L,
+    labelColor: String = "NONE", shadowColor: String = "NONE",
+    labelOpacity: Float = 1.0f, borderOpacity: Float = 1.0f, shadowOpacity: Float = 1.0f,
+    shadowRadius: Float = 8f, shadowDx: Float = 4f, shadowDy: Float = 4f,
+    isBold: Boolean = false, isItalic: Boolean = false, isUnderline: Boolean = false, caseMode: Int = 0
 ) {
     executeCommand(AddOperationCommand(EditOperation.AddText(
-        text, fontSize, TextPosition.fromLabel(position), relativeX, relativeY, color, startTimeMs,
-        endTimeMs, fontPath = fontPath, opacity = opacity, borderThickness = borderThickness,
-        borderColor = borderColor, textAlign = textAlign, letterSpacing = letterSpacing, lineSpacing = lineSpacing
+        text = text, fontSize = fontSize, position = TextPosition.fromLabel(position),
+        relativeX = relativeX, relativeY = relativeY, relativeWidth = relativeWidth,
+        color = color, startTimeMs = startTimeMs,
+        endTimeMs = endTimeMs, fontPath = fontPath, opacity = opacity, borderThickness = borderThickness,
+        borderColor = borderColor, textAlign = textAlign, letterSpacing = letterSpacing, lineSpacing = lineSpacing,
+        inAnimation = inAnimation, outAnimation = outAnimation, animationDurationMs = animationDurationMs,
+        labelColor = labelColor, shadowColor = shadowColor,
+        labelOpacity = labelOpacity, borderOpacity = borderOpacity, shadowOpacity = shadowOpacity,
+        shadowRadius = shadowRadius, shadowDx = shadowDx, shadowDy = shadowDy,
+        isBold = isBold, isItalic = isItalic, isUnderline = isUnderline, caseMode = caseMode
     ), "Add Text"))
 }
 
@@ -130,6 +150,108 @@ fun VideoEditingViewModel.updateSequenceOrder(orderedItems: List<EditOperation.M
     })
 }
 
+fun VideoEditingViewModel.updateFullSequenceOrder(orderedItems: List<EditOperation.MergeItem>) {
+    if (orderedItems.isEmpty()) return
+    executeCommand(com.eclip.rup.leb.commands.MutateProjectCommand("Reorder Sequence") { project ->
+        val ops = project.operations.toMutableList()
+
+        // 1. Extract previous top-level main operations before removing them
+        val oldSpeedOp = ops.filterIsInstance<EditOperation.SpeedMain>().lastOrNull()
+        val oldReverseOp = ops.filterIsInstance<EditOperation.ReverseMain>().lastOrNull()
+        val oldMirrorOp = ops.filterIsInstance<EditOperation.MirrorMain>().lastOrNull()
+        val oldMaskOp = ops.filterIsInstance<EditOperation.MaskMain>().lastOrNull()
+        val oldRotationOp = ops.filterIsInstance<EditOperation.RotationMain>().lastOrNull()
+        val oldOpacityOp = ops.filterIsInstance<EditOperation.OpacityMain>().lastOrNull()
+        val oldChromaOp = ops.filterIsInstance<EditOperation.ChromaMain>().lastOrNull()
+        val oldAnimOp = ops.filterIsInstance<EditOperation.AnimationMain>().lastOrNull()
+
+        // 2. Enrich orderedItems so that the old primary clip moving into the merge list retains its properties
+        val enrichedItems = orderedItems.map { item ->
+            if (project.sourceUri != null && item.uri == project.sourceUri) {
+                item.copy(
+                    speed = if (item.speed != 1.0f) item.speed else (oldSpeedOp?.speed ?: 1.0f),
+                    proxyUri = item.proxyUri ?: oldSpeedOp?.proxyUri ?: oldReverseOp?.proxyUri,
+                    isReversed = item.isReversed || (oldReverseOp?.isReversed == true),
+                    isMirrored = item.isMirrored || (oldMirrorOp?.isMirrored == true),
+                    maskConfig = if (item.maskConfig.shape != EditOperation.MaskShape.NONE) item.maskConfig else (oldMaskOp?.maskConfig ?: item.maskConfig),
+                    rotation = if (item.rotation != 0) item.rotation else (oldRotationOp?.rotation ?: 0),
+                    opacity = if (item.opacity < 1.0f) item.opacity else (oldOpacityOp?.opacity ?: 1.0f),
+                    chromaKeyColor = item.chromaKeyColor ?: oldChromaOp?.color,
+                    chromaKeySimilarity = if (item.chromaKeyColor != null) item.chromaKeySimilarity else (oldChromaOp?.similarity ?: item.chromaKeySimilarity),
+                    inAnimation = if (item.inAnimation != "NONE") item.inAnimation else (oldAnimOp?.inAnimation ?: "NONE"),
+                    outAnimation = if (item.outAnimation != "NONE") item.outAnimation else (oldAnimOp?.outAnimation ?: "NONE"),
+                    animationDurationMs = if (item.inAnimation != "NONE" || item.outAnimation != "NONE") item.animationDurationMs else (oldAnimOp?.animationDurationMs ?: 500L)
+                )
+            } else {
+                item
+            }
+        }
+
+        val primaryItem = enrichedItems[0]
+        val mergeItems = enrichedItems.drop(1)
+
+        // 3. Remove all old top-level main operations
+        ops.removeAll {
+            it is EditOperation.Trim ||
+            it is EditOperation.SpeedMain ||
+            it is EditOperation.ReverseMain ||
+            it is EditOperation.MirrorMain ||
+            it is EditOperation.MaskMain ||
+            it is EditOperation.RotationMain ||
+            it is EditOperation.OpacityMain ||
+            it is EditOperation.ChromaMain ||
+            it is EditOperation.AnimationMain
+        }
+
+        // 4. Add top-level main operations for the new primary clip
+        ops.add(0, EditOperation.Trim(primaryItem.trimStartMs, primaryItem.trimEndMs))
+        if (primaryItem.speed != 1.0f) {
+            ops.add(EditOperation.SpeedMain(primaryItem.speed, primaryItem.proxyUri))
+        }
+        if (primaryItem.isReversed) {
+            ops.add(EditOperation.ReverseMain(true, primaryItem.proxyUri))
+        }
+        if (primaryItem.isMirrored) {
+            ops.add(EditOperation.MirrorMain(true))
+        }
+        if (primaryItem.maskConfig.shape != EditOperation.MaskShape.NONE) {
+            ops.add(EditOperation.MaskMain(primaryItem.maskConfig))
+        }
+        if (primaryItem.rotation != 0) {
+            ops.add(EditOperation.RotationMain(primaryItem.rotation))
+        }
+        if (primaryItem.opacity < 1.0f) {
+            ops.add(EditOperation.OpacityMain(primaryItem.opacity))
+        }
+        if (!primaryItem.chromaKeyColor.isNullOrBlank()) {
+            ops.add(EditOperation.ChromaMain(primaryItem.chromaKeyColor, primaryItem.chromaKeySimilarity))
+        }
+        if (primaryItem.inAnimation != "NONE" || primaryItem.outAnimation != "NONE") {
+            ops.add(EditOperation.AnimationMain(primaryItem.inAnimation, primaryItem.outAnimation, primaryItem.animationDurationMs))
+        }
+
+        // 5. Update or remove the Merge operation
+        val mergeIdx = ops.indexOfFirst { it is EditOperation.Merge }
+        if (mergeItems.isNotEmpty()) {
+            val newMergeOp = EditOperation.Merge(mergeItems)
+            if (mergeIdx != -1) {
+                ops[mergeIdx] = newMergeOp
+            } else {
+                ops.add(newMergeOp)
+            }
+        } else {
+            if (mergeIdx != -1) {
+                ops.removeAt(mergeIdx)
+            }
+        }
+
+        project.copy(
+            sourceUri = primaryItem.uri,
+            operations = ops
+        )
+    })
+}
+
 fun VideoEditingViewModel.removeMergeVideo(index: Int) {
     executeCommand(MutateListCommand("Remove Clip") { ops ->
         val mergeIdx = ops.indexOfFirst { it is EditOperation.Merge }
@@ -159,6 +281,23 @@ fun VideoEditingViewModel.toggleMuteClip(index: Int) {
             newOps[existingIdx] = current.copy(isMuted = !current.isMuted)
         } else {
             newOps.add(EditOperation.MuteClip(index, true))
+        }
+        newOps
+    })
+}
+
+fun VideoEditingViewModel.setAllClipsMuteState(isMuted: Boolean, videoIndices: List<Int>) {
+    executeCommand(MutateListCommand(if (isMuted) "Mute All Clips" else "Unmute All Clips") { ops ->
+        val newOps = ops.toMutableList()
+        
+        videoIndices.forEach { index ->
+            val existingIdx = newOps.indexOfFirst { it is EditOperation.MuteClip && it.index == index }
+            if (existingIdx != -1) {
+                val current = newOps[existingIdx] as EditOperation.MuteClip
+                newOps[existingIdx] = current.copy(isMuted = isMuted)
+            } else {
+                newOps.add(EditOperation.MuteClip(index, isMuted))
+            }
         }
         newOps
     })
@@ -265,15 +404,55 @@ fun VideoEditingViewModel.splitVideoSegment(index: Int, localSplitTimeMs: Long, 
             val reverseOp = newOps.filterIsInstance<EditOperation.ReverseMain>().lastOrNull()
             val mirrorOp = newOps.filterIsInstance<EditOperation.MirrorMain>().lastOrNull()
             val maskOp = newOps.filterIsInstance<EditOperation.MaskMain>().lastOrNull()
+            val rotationOp = newOps.filterIsInstance<EditOperation.RotationMain>().lastOrNull()
+            val opacityOp = newOps.filterIsInstance<EditOperation.OpacityMain>().lastOrNull()
+            val chromaOp = newOps.filterIsInstance<EditOperation.ChromaMain>().lastOrNull()
+            val animOp = newOps.filterIsInstance<EditOperation.AnimationMain>().lastOrNull()
             
             val speed = speedOp?.speed ?: 1.0f
             val isReversed = reverseOp?.isReversed ?: false
             val isMirrored = mirrorOp?.isMirrored ?: false
             val maskConfig = maskOp?.maskConfig ?: EditOperation.MaskConfig()
-            val proxyUri = reverseOp?.proxyUri ?: speedOp?.proxyUri
+            val rotation = rotationOp?.rotation ?: 0
+            val opacity = opacityOp?.opacity ?: 1.0f
+            val chromaColor = chromaOp?.color
+            val chromaSimilarity = chromaOp?.similarity ?: 0.1f
+            val inAnim = animOp?.inAnimation ?: "NONE"
+            val outAnim = animOp?.outAnimation ?: "NONE"
+            val animDurationMs = animOp?.animationDurationMs ?: 500L
+
+            // Invalidate proxy on the left half because trim boundary changed
+            if (reverseOp != null && reverseOp.proxyUri != null) {
+                val rIdx = newOps.indexOf(reverseOp)
+                if (rIdx != -1) newOps[rIdx] = reverseOp.copy(proxyUri = null)
+            }
+            if (speedOp != null && speedOp.proxyUri != null) {
+                val sIdx = newOps.indexOf(speedOp)
+                if (sIdx != -1) newOps[sIdx] = speedOp.copy(proxyUri = null)
+            }
             
             val mergeIdx = newOps.indexOfFirst { it is EditOperation.Merge }
-            val newItem = EditOperation.MergeItem(sourceUri, sourceDuration, trimStartMs = localSplitTimeMs, trimEndMs = oldEndMs, speed = speed, isReversed = isReversed, isMirrored = isMirrored, maskConfig = maskConfig, proxyUri = proxyUri)
+            val path = sourceUri.path?.lowercase() ?: sourceUri.toString().lowercase()
+            val isImg = path.endsWith(".png") || path.endsWith(".jpg") || path.endsWith(".jpeg") || path.endsWith(".webp") || path.endsWith(".gif") || path.endsWith(".bmp")
+            val newItem = EditOperation.MergeItem(
+                uri = sourceUri,
+                durationMs = sourceDuration,
+                trimStartMs = localSplitTimeMs,
+                trimEndMs = oldEndMs,
+                speed = speed,
+                isReversed = isReversed,
+                isMirrored = isMirrored,
+                maskConfig = maskConfig,
+                proxyUri = null,
+                isImage = isImg,
+                rotation = rotation,
+                opacity = opacity,
+                chromaKeyColor = chromaColor,
+                chromaKeySimilarity = chromaSimilarity,
+                inAnimation = inAnim,
+                outAnimation = outAnim,
+                animationDurationMs = animDurationMs
+            )
             if (mergeIdx != -1) {
                 val mergeOp = newOps[mergeIdx] as EditOperation.Merge
                 val items = mergeOp.items.toMutableList()
@@ -290,8 +469,10 @@ fun VideoEditingViewModel.splitVideoSegment(index: Int, localSplitTimeMs: Long, 
                 val targetIndex = index - 1
                 if (targetIndex >= 0 && targetIndex < items.size) {
                     val item = items[targetIndex]
-                    items[targetIndex] = item.copy(trimEndMs = localSplitTimeMs)
-                    items.add(targetIndex + 1, item.copy(trimStartMs = localSplitTimeMs))
+                    val clearProxy = item.isReversed || item.speed != 1.0f
+                    val newProxy = if (clearProxy) null else item.proxyUri
+                    items[targetIndex] = item.copy(trimEndMs = localSplitTimeMs, proxyUri = newProxy)
+                    items.add(targetIndex + 1, item.copy(trimStartMs = localSplitTimeMs, proxyUri = newProxy))
                     newOps[mergeIdx] = mergeOp.copy(items = items)
                 }
             }
@@ -380,13 +561,14 @@ fun VideoEditingViewModel.moveOverlayOperation(id: String, moveUp: Boolean) {
         val newOps = ops.toMutableList()
         val targetIndex = newOps.indexOfFirst {
             (it is EditOperation.AddText && it.id == id) ||
-            (it is EditOperation.AddImageOverlay && it.id == id)
+            (it is EditOperation.AddImageOverlay && it.id == id) ||
+            (it is EditOperation.MosaicOverlay && it.id == id)
         }
         
         if (targetIndex != -1) {
             val overlayIndices = newOps.indices.filter { idx ->
                 val op = newOps[idx]
-                op is EditOperation.AddText || op is EditOperation.AddImageOverlay
+                op is EditOperation.AddText || op is EditOperation.AddImageOverlay || op is EditOperation.MosaicOverlay
             }
             
             val relativeIdx = overlayIndices.indexOf(targetIndex)
@@ -434,3 +616,200 @@ fun VideoEditingViewModel.setScrubProxyUri(dependencyId: String, proxyUri: Uri) 
         }
     })
 }
+
+fun VideoEditingViewModel.addMosaicOverlay(
+    relativeX: Float = 0.5f,
+    relativeY: Float = 0.5f,
+    relativeWidth: Float = 0.35f,
+    relativeHeight: Float = 0.35f,
+    intensity: Int = 15,
+    shape: EditOperation.MaskShape = EditOperation.MaskShape.RECTANGLE,
+    startTimeMs: Long? = null,
+    endTimeMs: Long? = null
+) {
+    executeCommand(AddOperationCommand(EditOperation.MosaicOverlay(
+        relativeX = relativeX,
+        relativeY = relativeY,
+        relativeWidth = relativeWidth,
+        relativeHeight = relativeHeight,
+        intensity = intensity,
+        shape = shape,
+        startTimeMs = startTimeMs,
+        endTimeMs = endTimeMs
+    ), "Add Mosaic Effect"))
+}
+
+fun VideoEditingViewModel.updateMergeItemRotation(index: Int, rotation: Float) {
+    if (index == 0) {
+        updateMainVideoRotation(rotation.toInt())
+    } else {
+        executeCommand(MutateListCommand("Rotate Clip") { ops ->
+            val newOps = ops.toMutableList()
+            val mergeIdx = newOps.indexOfFirst { it is EditOperation.Merge }
+            if (mergeIdx != -1) {
+                val mergeOp = newOps[mergeIdx] as EditOperation.Merge
+                val items = mergeOp.items.toMutableList()
+                val targetIdx = index - 1
+                if (targetIdx in items.indices) {
+                    items[targetIdx] = items[targetIdx].copy(rotation = rotation.toInt())
+                    newOps[mergeIdx] = mergeOp.copy(items = items)
+                }
+            }
+            newOps
+        })
+    }
+}
+
+fun VideoEditingViewModel.updateMergeItemOpacity(index: Int, opacity: Float) {
+    if (index == 0) {
+        updateMainVideoOpacity(opacity)
+    } else {
+        executeCommand(MutateListCommand("Clip Opacity") { ops ->
+            val newOps = ops.toMutableList()
+            val mergeIdx = newOps.indexOfFirst { it is EditOperation.Merge }
+            if (mergeIdx != -1) {
+                val mergeOp = newOps[mergeIdx] as EditOperation.Merge
+                val items = mergeOp.items.toMutableList()
+                val targetIdx = index - 1
+                if (targetIdx in items.indices) {
+                    items[targetIdx] = items[targetIdx].copy(opacity = opacity)
+                    newOps[mergeIdx] = mergeOp.copy(items = items)
+                }
+            }
+            newOps
+        })
+    }
+}
+
+fun VideoEditingViewModel.updateMergeItemChroma(index: Int, color: String?, similarity: Float = 0.1f) {
+    executeCommand(MutateListCommand("Clip Chroma Key") { ops ->
+        val newOps = ops.toMutableList()
+        if (index == 0) {
+            val chromaIdx = newOps.indexOfFirst { it is EditOperation.ChromaMain }
+            if (chromaIdx != -1) {
+                newOps[chromaIdx] = EditOperation.ChromaMain(color, similarity)
+            } else {
+                newOps.add(EditOperation.ChromaMain(color, similarity))
+            }
+        } else {
+            val mergeIdx = newOps.indexOfFirst { it is EditOperation.Merge }
+            if (mergeIdx != -1) {
+                val mergeOp = newOps[mergeIdx] as EditOperation.Merge
+                val items = mergeOp.items.toMutableList()
+                val targetIdx = index - 1
+                if (targetIdx in items.indices) {
+                    items[targetIdx] = items[targetIdx].copy(chromaKeyColor = color, chromaKeySimilarity = similarity)
+                    newOps[mergeIdx] = mergeOp.copy(items = items)
+                }
+            }
+        }
+        newOps
+    })
+}
+
+fun VideoEditingViewModel.updateMergeItemAnimation(index: Int, inAnim: String, outAnim: String, durationMs: Long) {
+    executeCommand(MutateListCommand("Clip Animation") { ops ->
+        val newOps = ops.toMutableList()
+        if (index == 0) {
+            val animIdx = newOps.indexOfFirst { it is EditOperation.AnimationMain }
+            if (animIdx != -1) {
+                newOps[animIdx] = EditOperation.AnimationMain(inAnim, outAnim, durationMs)
+            } else {
+                newOps.add(EditOperation.AnimationMain(inAnim, outAnim, durationMs))
+            }
+        } else {
+            val mergeIdx = newOps.indexOfFirst { it is EditOperation.Merge }
+            if (mergeIdx != -1) {
+                val mergeOp = newOps[mergeIdx] as EditOperation.Merge
+                val items = mergeOp.items.toMutableList()
+                val targetIdx = index - 1
+                if (targetIdx in items.indices) {
+                    items[targetIdx] = items[targetIdx].copy(inAnimation = inAnim, outAnimation = outAnim, animationDurationMs = durationMs)
+                    newOps[mergeIdx] = mergeOp.copy(items = items)
+                }
+            }
+        }
+        newOps
+    })
+}
+
+fun VideoEditingViewModel.duplicateSequenceSegment(index: Int, sourceDurationMs: Long = 0L) {
+    executeCommand(MutateListCommand("Duplicate Clip") { ops ->
+        val mergeIdx = ops.indexOfFirst { it is EditOperation.Merge }
+        val newOps = ops.toMutableList()
+        if (index == 0) {
+            val sourceUri = project.value?.sourceUri
+            if (sourceUri != null) {
+                val trimOp = ops.filterIsInstance<EditOperation.Trim>().lastOrNull()
+                val startMs = trimOp?.startMs ?: 0L
+                val endMs = trimOp?.endMs ?: 5000L
+                val totalDuration = if (sourceDurationMs > 0L) sourceDurationMs else endMs
+
+                val speedOp = ops.filterIsInstance<EditOperation.SpeedMain>().lastOrNull()
+                val reverseOp = ops.filterIsInstance<EditOperation.ReverseMain>().lastOrNull()
+                val mirrorOp = ops.filterIsInstance<EditOperation.MirrorMain>().lastOrNull()
+                val maskOp = ops.filterIsInstance<EditOperation.MaskMain>().lastOrNull()
+                val rotationOp = ops.filterIsInstance<EditOperation.RotationMain>().lastOrNull()
+                val opacityOp = ops.filterIsInstance<EditOperation.OpacityMain>().lastOrNull()
+                val chromaOp = ops.filterIsInstance<EditOperation.ChromaMain>().lastOrNull()
+                val animOp = ops.filterIsInstance<EditOperation.AnimationMain>().lastOrNull()
+
+                val speed = speedOp?.speed ?: 1.0f
+                val isReversed = reverseOp?.isReversed ?: false
+                val isMirrored = mirrorOp?.isMirrored ?: false
+                val maskConfig = maskOp?.maskConfig ?: EditOperation.MaskConfig()
+                val rotation = rotationOp?.rotation ?: 0
+                val opacity = opacityOp?.opacity ?: 1.0f
+                val chromaColor = chromaOp?.color
+                val chromaSimilarity = chromaOp?.similarity ?: 0.1f
+                val inAnim = animOp?.inAnimation ?: "NONE"
+                val outAnim = animOp?.outAnimation ?: "NONE"
+                val animDurationMs = animOp?.animationDurationMs ?: 500L
+                val path = sourceUri.path?.lowercase() ?: sourceUri.toString().lowercase()
+                val isImg = path.endsWith(".png") || path.endsWith(".jpg") || path.endsWith(".jpeg") || path.endsWith(".webp") || path.endsWith(".gif") || path.endsWith(".bmp")
+
+                val dup = EditOperation.MergeItem(
+                    uri = sourceUri,
+                    durationMs = totalDuration,
+                    trimStartMs = startMs,
+                    trimEndMs = endMs,
+                    speed = speed,
+                    proxyUri = null,
+                    isReversed = isReversed,
+                    isMirrored = isMirrored,
+                    maskConfig = maskConfig,
+                    isImage = isImg,
+                    rotation = rotation,
+                    opacity = opacity,
+                    chromaKeyColor = chromaColor,
+                    chromaKeySimilarity = chromaSimilarity,
+                    inAnimation = inAnim,
+                    outAnimation = outAnim,
+                    animationDurationMs = animDurationMs
+                )
+
+                if (mergeIdx != -1) {
+                    val mergeOp = newOps[mergeIdx] as EditOperation.Merge
+                    val items = mergeOp.items.toMutableList()
+                    items.add(0, dup)
+                    newOps[mergeIdx] = mergeOp.copy(items = items)
+                } else {
+                    newOps.add(EditOperation.Merge(listOf(dup)))
+                }
+            }
+        } else {
+            if (mergeIdx != -1) {
+                val mergeOp = newOps[mergeIdx] as EditOperation.Merge
+                val items = mergeOp.items.toMutableList()
+                val targetIdx = index - 1
+                if (targetIdx in items.indices) {
+                    val dup = items[targetIdx].copy()
+                    items.add(targetIdx + 1, dup)
+                    newOps[mergeIdx] = mergeOp.copy(items = items)
+                }
+            }
+        }
+        newOps
+    })
+}
+

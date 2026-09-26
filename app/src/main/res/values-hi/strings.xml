@@ -175,4 +175,7 @@
     <string name="str_select_all">सभी चुनें</string>
     <string name="str_deselect_all">सभी अचयनित करें</string>
     <string name="str_delete_selected_drafts_confirm">क्या आप वाकई %1$d चयनित ड्राफ्ट हटाना चाहते हैं?</string>
+    <string name="str_unsupported_resolution_title">असमर्थित रिज़ॉल्यूशन</string>
+    <string name="str_unsupported_resolution_warning">यह ऐप केवल 1080p तक के वीडियो को support करता है। 1080p से अधिक resolution वाली वीडियो, जैसे 2K या 4K, supported नहीं हैं।</string>
+    <string name="str_choose_supported_video">वीडियो बदलें</string>
 </resources>

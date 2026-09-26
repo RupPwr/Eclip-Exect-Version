@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
+    id 'kotlin-parcelize'
 }
 
 apply plugin: 'com.mikepenz.aboutlibraries.plugin'
@@ -55,6 +56,10 @@ android {
     }
     buildFeatures {
         viewBinding true
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
     }
 
     packaging {

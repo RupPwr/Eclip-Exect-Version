@@ -1,0 +1,297 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/textLayerToolbarRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <!-- Toolbar Row -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:requiresFadingEdge="horizontal"
+        android:fadingEdgeLength="32dp"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingVertical="8dp"
+            android:paddingHorizontal="4dp">
+
+            <!-- 1. T+ (Add Text) -->
+            <LinearLayout
+                android:id="@+id/btnTextLayerAddContainer"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnTextLayerAdd"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_add_24"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="Add Text"
+                    app:tint="@color/toolTextInactive" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="T+"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/toolTextInactive"/>
+            </LinearLayout>
+
+            <!-- 2. Edit -->
+            <LinearLayout
+                android:id="@+id/btnTextLayerEditContainer"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnTextLayerEdit"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_edit_24"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="Edit"
+                    app:tint="@color/toolTextInactive" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="Edit"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/toolTextInactive"/>
+            </LinearLayout>
+
+            <!-- 3. Font (Aa) -->
+            <LinearLayout
+                android:id="@+id/btnTextLayerFontContainer"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnTextLayerFont"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_font_aa_24"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="Font"
+                    app:tint="@color/toolTextInactive" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="Font"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/toolTextInactive"/>
+            </LinearLayout>
+
+            <!-- 4. Color -->
+            <LinearLayout
+                android:id="@+id/btnTextLayerColorContainer"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnTextLayerColor"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_color_wheel_24"
+                    android:padding="7dp"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="Color" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="Color"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/toolTextInactive"/>
+            </LinearLayout>
+
+            <!-- 5. Animation -->
+            <LinearLayout
+                android:id="@+id/btnTextLayerAnimationContainer"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnTextLayerAnimation"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_tool_animation"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="Animation"
+                    app:tint="@color/toolTextInactive" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="Animation"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/toolTextInactive"/>
+            </LinearLayout>
+
+            <!-- 6. Split -->
+            <LinearLayout
+                android:id="@+id/btnTextLayerSplitContainer"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnTextLayerSplit"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_split_24"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="Split"
+                    app:tint="@color/toolTextInactive" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="@string/split"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/toolTextInactive"/>
+            </LinearLayout>
+
+            <!-- 7. Delete -->
+            <LinearLayout
+                android:id="@+id/btnTextLayerDeleteContainer"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnTextLayerDelete"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_delete_24"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="Delete"
+                    app:tint="@color/colorPrimary" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="@string/delete"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/colorPrimary"/>
+            </LinearLayout>
+
+            <!-- 8. Adjust -->
+            <LinearLayout
+                android:id="@+id/btnTextLayerAdjustContainer"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnTextLayerAdjust"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_tune_24"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="Adjust"
+                    app:tint="@color/toolTextInactive" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="@string/str_adjust"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/toolTextInactive"/>
+            </LinearLayout>
+
+            <!-- 9. Copy -->
+            <LinearLayout
+                android:id="@+id/btnTextLayerCopyContainer"
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnTextLayerCopy"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_tool_copy"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    android:contentDescription="Copy"
+                    app:tint="@color/toolTextInactive" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="Copy"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/toolTextInactive"/>
+            </LinearLayout>
+
+        </LinearLayout>
+    </HorizontalScrollView>
+</LinearLayout>

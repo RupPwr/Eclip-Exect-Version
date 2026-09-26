@@ -25,12 +25,10 @@ import com.eclip.rup.leb.databinding.ActivityMainBinding
 import com.eclip.rup.leb.utils.ErrorCode
 import com.eclip.rup.leb.utils.setBounceClickListener
 import androidx.lifecycle.lifecycleScope
+import com.eclip.rup.leb.models.TimelineClip
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 class MainActivity : AppCompatActivity() {
 
@@ -39,11 +37,13 @@ class MainActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri>? ->
             if (!uris.isNullOrEmpty()) {
                 for (uri in uris) {
-                    try {
-                        val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        contentResolver.takePersistableUriPermission(uri, takeFlags)
-                    } catch (e: Exception) {
-                        Log.e("VideoSelection", "Could not take persistable permission", e)
+                    if (uri.scheme == android.content.ContentResolver.SCHEME_CONTENT) {
+                        try {
+                            val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            contentResolver.takePersistableUriPermission(uri, takeFlags)
+                        } catch (e: Exception) {
+                            Log.d("VideoSelection", "Persistable permission not granted or not supported: ${e.message}")
+                        }
                     }
                 }
                 Log.d("VideoSelection", "Selected ${uris.size} media items: $uris")
@@ -179,6 +179,8 @@ class MainActivity : AppCompatActivity() {
         }
         binding.rvDrafts.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, 3)
         binding.rvDrafts.adapter = draftsAdapter
+        binding.rvDrafts.isNestedScrollingEnabled = false
+        binding.rvDrafts.setHasFixedSize(false)
         loadDrafts()
 
         // Draft Selection Mode Toggle Button (Three-line icon in Drafts header)
@@ -271,14 +273,12 @@ class MainActivity : AppCompatActivity() {
             updateHapticFeedbackUI()
         }
 
-        // Initialize Fullscreen Editor preference
+        // Initialize Fullscreen Editor preference (Permanently Disabled)
+        prefs.edit().putBoolean("fullscreen_editor", false).apply()
         updateFullscreenEditorUI()
-
-        binding.btnToggleFullscreenEditor.setBounceClickListener {
-            val current = prefs.getBoolean("fullscreen_editor", true)
-            prefs.edit().putBoolean("fullscreen_editor", !current).apply()
-            updateFullscreenEditorUI()
-        }
+        binding.btnToggleFullscreenEditor.isClickable = false
+        binding.btnToggleFullscreenEditor.isFocusable = false
+        binding.btnToggleFullscreenEditor.alpha = 0.5f
 
         // Initialize Default Encoder preference
         updateEncoderUI()
@@ -415,13 +415,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateFullscreenEditorUI() {
-        val prefs = getSharedPreferences("eclip_prefs", MODE_PRIVATE)
-        val isFullscreen = prefs.getBoolean("fullscreen_editor", true)
-        binding.tvCurrentFullscreenEditor.text = if (isFullscreen) {
-            getString(R.string.str_fullscreen_enabled_desc)
-        } else {
-            getString(R.string.str_fullscreen_disabled_desc)
-        }
+        binding.tvCurrentFullscreenEditor.text = getString(R.string.str_fullscreen_disabled_desc)
     }
 
     private fun updateEncoderUI() {
@@ -508,29 +502,39 @@ class MainActivity : AppCompatActivity() {
         loadDrafts()
     }
 
+    private var loadDraftsJob: kotlinx.coroutines.Job? = null
+
     private fun loadDrafts() {
-        val drafts = com.eclip.rup.leb.utils.DraftManager.getAllDrafts(this)
-        if (drafts.isEmpty()) {
-            binding.rvDrafts.visibility = View.GONE
-            binding.layoutEmptyDrafts.visibility = View.VISIBLE
-            exitDraftSelectionMode()
-        } else {
-            binding.layoutEmptyDrafts.visibility = View.GONE
-            binding.rvDrafts.visibility = View.VISIBLE
-            draftsAdapter.updateData(drafts)
+        loadDraftsJob?.cancel()
+        loadDraftsJob = lifecycleScope.launch {
+            val drafts = withContext(Dispatchers.IO) {
+                com.eclip.rup.leb.utils.DraftManager.getAllDrafts(this@MainActivity)
+            }
+            if (drafts.isEmpty()) {
+                binding.rvDrafts.visibility = View.GONE
+                binding.layoutEmptyDrafts.visibility = View.VISIBLE
+                exitDraftSelectionMode()
+            } else {
+                binding.layoutEmptyDrafts.visibility = View.GONE
+                binding.rvDrafts.visibility = View.VISIBLE
+                draftsAdapter.updateData(drafts)
+                if (draftsAdapter.isSelectionMode) {
+                    updateDraftSelectionUI(draftsAdapter.selectedDraftIds.size, drafts.size)
+                }
+            }
         }
     }
 
     private fun enterDraftSelectionMode() {
-        val drafts = com.eclip.rup.leb.utils.DraftManager.getAllDrafts(this)
-        if (drafts.isEmpty()) {
+        val totalCount = draftsAdapter.itemCount
+        if (totalCount == 0) {
             showToast("No drafts to select")
             return
         }
         draftsAdapter.toggleSelectionMode(true)
         binding.layoutDraftSelectionBar.visibility = View.VISIBLE
         binding.btnToggleDraftSelection.setColorFilter(Color.parseColor("#FF2A6D"))
-        updateDraftSelectionUI(draftsAdapter.selectedDraftIds.size, drafts.size)
+        updateDraftSelectionUI(draftsAdapter.selectedDraftIds.size, totalCount)
     }
 
     private fun exitDraftSelectionMode() {
@@ -575,6 +579,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openDraft(draft: com.eclip.rup.leb.utils.DraftItem) {
+        if (draft.sourceUri != null && com.eclip.rup.leb.utils.MediaValidator.checkIsAbove1080p(this, draft.sourceUri)) {
+            showUnsupportedResolutionDialog()
+            return
+        }
         val intent = Intent(this, VideoEditingActivity::class.java).apply {
             val fileUri = com.eclip.rup.leb.utils.DraftManager.getDraftFileUri(this@MainActivity, draft.id)
             putExtra("PROJECT_URI", fileUri)
@@ -648,24 +656,16 @@ class MainActivity : AppCompatActivity() {
             initialMediaType = com.eclip.rup.leb.customviews.MediaPickerBottomSheet.MediaType.VIDEO
             showCategoryTabs = true
             showAudioTab = false
+            onClipSelectedListener = { clip ->
+                navigateToEditingScreenWithClips(listOf(clip))
+            }
+            onMultipleClipsSelectedListener = { clips ->
+                navigateToEditingScreenWithClips(clips)
+            }
             onMediaSelectedListener = { uri ->
-                try {
-                    val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    contentResolver.takePersistableUriPermission(uri, takeFlags)
-                } catch (e: Exception) {
-                    Log.d("VideoSelection", "Could not take persistable permission: ${e.message}")
-                }
                 navigateToEditingScreen(listOf(uri))
             }
             onMultipleMediaSelectedListener = { uris ->
-                for (uri in uris) {
-                    try {
-                        val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        contentResolver.takePersistableUriPermission(uri, takeFlags)
-                    } catch (e: Exception) {
-                        Log.d("VideoSelection", "Could not take persistable permission: ${e.message}")
-                    }
-                }
                 navigateToEditingScreen(uris)
             }
             onBrowseSystemFoldersRequested = {
@@ -675,16 +675,66 @@ class MainActivity : AppCompatActivity() {
         picker.show(supportFragmentManager, "MediaPickerBottomSheet")
     }
 
+    private fun showUnsupportedResolutionDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.str_unsupported_resolution_title)
+            .setMessage(R.string.str_unsupported_resolution_warning)
+            .setPositiveButton(R.string.str_choose_supported_video) { _, _ ->
+                selectVideo()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun navigateToEditingScreenWithClips(clips: List<TimelineClip>) {
+        if (clips.isEmpty()) return
+        val mediaUris = clips.map { it.uri }
+        lifecycleScope.launch {
+            for (uri in mediaUris) {
+                if (uri.scheme == android.content.ContentResolver.SCHEME_CONTENT) {
+                    try {
+                        val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        contentResolver.takePersistableUriPermission(uri, takeFlags)
+                    } catch (e: Exception) {
+                        Log.d("VideoSelection", "Persistable permission not granted or not supported: ${e.message}")
+                    }
+                }
+            }
+            Log.d("Navigation", "Navigating to editing screen with ${clips.size} TimelineClips")
+            val intent = Intent(this@MainActivity, VideoEditingActivity::class.java).apply {
+                putExtra("VIDEO_URI", mediaUris.first())
+                putParcelableArrayListExtra("TIMELINE_CLIPS", ArrayList(clips))
+                putParcelableArrayListExtra("MEDIA_URIS", ArrayList(mediaUris))
+                data = mediaUris.first()
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(intent)
+        }
+    }
+
     private fun navigateToEditingScreen(mediaUris: List<Uri>) {
         if (mediaUris.isEmpty()) return
-        Log.d("Navigation", "Navigating to editing screen with ${mediaUris.size} URIs: $mediaUris")
-        val intent = Intent(this, VideoEditingActivity::class.java).apply {
-            putExtra("VIDEO_URI", mediaUris.first())
-            putParcelableArrayListExtra("MEDIA_URIS", ArrayList(mediaUris))
-            data = mediaUris.first()
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        lifecycleScope.launch {
+
+            for (uri in mediaUris) {
+                if (uri.scheme == android.content.ContentResolver.SCHEME_CONTENT) {
+                    try {
+                        val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        contentResolver.takePersistableUriPermission(uri, takeFlags)
+                    } catch (e: Exception) {
+                        Log.d("VideoSelection", "Persistable permission not granted or not supported: ${e.message}")
+                    }
+                }
+            }
+            Log.d("Navigation", "Navigating to editing screen with ${mediaUris.size} URIs: $mediaUris")
+            val intent = Intent(this@MainActivity, VideoEditingActivity::class.java).apply {
+                putExtra("VIDEO_URI", mediaUris.first())
+                putParcelableArrayListExtra("MEDIA_URIS", ArrayList(mediaUris))
+                data = mediaUris.first()
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(intent)
         }
-        startActivity(intent)
     }
 
     private fun navigateToEditingScreen(videoUri: Uri) {
@@ -702,11 +752,13 @@ class MainActivity : AppCompatActivity() {
         val action = intent.action
         val type = intent.type
 
+        var handled = false
         if (Intent.ACTION_SEND == action && type != null) {
             if (type.startsWith("video/") || type.startsWith("image/")) {
                 androidx.core.content.IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)?.let { uri ->
                     Log.d("SharedVideo", "Received SEND intent with media URI: $uri")
                     navigateToEditingScreen(uri)
+                    handled = true
                 }
             }
         } else if ((Intent.ACTION_VIEW == action || Intent.ACTION_EDIT == action) && type != null) {
@@ -714,8 +766,14 @@ class MainActivity : AppCompatActivity() {
                 intent.data?.let { uri ->
                     Log.d("SharedVideo", "Received VIEW/EDIT intent with media URI: $uri")
                     navigateToEditingScreen(uri)
+                    handled = true
                 }
             }
+        }
+        
+        if (handled) {
+            intent.action = null
+            setIntent(intent)
         }
     }
 
@@ -759,6 +817,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkForUpdates() {
-        showToast("You are using the latest version of Eclip.")
+        showToast(getString(R.string.toast_checking_for_updates))
+        openUrl("https://github.com/RupPwr/Eclip-Exect-Version/releases")
     }
 }

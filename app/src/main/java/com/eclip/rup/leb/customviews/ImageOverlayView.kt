@@ -222,57 +222,6 @@ class ImageOverlayView @JvmOverloads constructor(
         }
     }
 
-    private fun interpolateKeyframes(
-        keyframes: List<EditOperation.KeyframePoint>,
-        timeMs: Long,
-        defaultValue: Float
-    ): Float {
-        if (keyframes.isEmpty()) return defaultValue
-        val sorted = keyframes.sortedBy { it.timeMs }
-        if (timeMs <= sorted.first().timeMs) {
-            return sorted.first().valueX
-        }
-        if (timeMs >= sorted.last().timeMs) {
-            return sorted.last().valueX
-        }
-        for (i in 0 until sorted.size - 1) {
-            val k1 = sorted[i]
-            val k2 = sorted[i + 1]
-            if (timeMs >= k1.timeMs && timeMs <= k2.timeMs) {
-                val progress = (timeMs - k1.timeMs).toFloat() / (k2.timeMs - k1.timeMs)
-                return k1.valueX + progress * (k2.valueX - k1.valueX)
-            }
-        }
-        return defaultValue
-    }
-
-    private fun interpolateKeyframePosition(
-        keyframes: List<EditOperation.KeyframePoint>,
-        timeMs: Long,
-        defaultX: Float,
-        defaultY: Float
-    ): Pair<Float, Float> {
-        if (keyframes.isEmpty()) return Pair(defaultX, defaultY)
-        val sorted = keyframes.sortedBy { it.timeMs }
-        if (timeMs <= sorted.first().timeMs) {
-            return Pair(sorted.first().valueX, sorted.first().valueY)
-        }
-        if (timeMs >= sorted.last().timeMs) {
-            return Pair(sorted.last().valueX, sorted.last().valueY)
-        }
-        for (i in 0 until sorted.size - 1) {
-            val k1 = sorted[i]
-            val k2 = sorted[i + 1]
-            if (timeMs >= k1.timeMs && timeMs <= k2.timeMs) {
-                val progress = (timeMs - k1.timeMs).toFloat() / (k2.timeMs - k1.timeMs)
-                val x = k1.valueX + progress * (k2.valueX - k1.valueX)
-                val y = k1.valueY + progress * (k2.valueY - k1.valueY)
-                return Pair(x, y)
-            }
-        }
-        return Pair(defaultX, defaultY)
-    }
-
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
@@ -292,29 +241,9 @@ class ImageOverlayView @JvmOverloads constructor(
                           path.endsWith(".3gp", ignoreCase = true)
 
             val relativeTimeMs = currentPositionMs - start
-            val interpolatedPos = if (op.positionKeyframes.isNotEmpty()) {
-                interpolateKeyframePosition(op.positionKeyframes, relativeTimeMs, op.relativeX, op.relativeY)
-            } else {
-                Pair(op.relativeX, op.relativeY)
-            }
-            val interpolatedOpacity = if (op.opacityKeyframes.isNotEmpty()) {
-                interpolateKeyframes(op.opacityKeyframes, relativeTimeMs, op.opacity)
-            } else {
-                op.opacity
-            }
-            val interpolatedOp = op.copy(
-                relativeX = interpolatedPos.first,
-                relativeY = interpolatedPos.second,
-                opacity = interpolatedOpacity
-            )
 
             if (isGif || isVideo) {
-                val speed = if (op.speedKeyframes.isNotEmpty()) {
-                    interpolateKeyframes(op.speedKeyframes, relativeTimeMs, 1.0f)
-                } else {
-                    1.0f
-                }
-                var effectiveTimeMs = (relativeTimeMs * speed).toLong()
+                var effectiveTimeMs = relativeTimeMs
                 
                 if (isGif) {
                     var movie = movieCache[op.imageUri.toString()]
@@ -353,7 +282,7 @@ class ImageOverlayView @JvmOverloads constructor(
                 // We use a relatively high threshold (100ms) to avoid over-fetching
                 // As long as the fetched frame is close to what we need, we show it
                 if (cached != null && Math.abs(cached.first - effectiveTimeMs) < 100) {
-                    drawBitmapOp(canvas, cached.second, interpolatedOp, videoRect)
+                    drawBitmapOp(canvas, cached.second, op, videoRect)
                 } else {
                     // Need a new frame
                     if (!pendingFetches.contains(op.id)) {
@@ -381,7 +310,9 @@ class ImageOverlayView @JvmOverloads constructor(
                                 if (retriever != null) {
                                     try {
                                         // Use OPTION_CLOSEST instead of OPTION_CLOSEST_SYNC to get accurate frames rather than choppy I-frames
-                                        bitmap = retriever.getFrameAtTime(effectiveTimeMs * 1000, android.media.MediaMetadataRetriever.OPTION_CLOSEST)
+                                        bitmap = com.eclip.rup.leb.utils.CodecInstancePool.withHardwareCodecPermit {
+                                            retriever.getFrameAtTime(effectiveTimeMs * 1000, android.media.MediaMetadataRetriever.OPTION_CLOSEST)
+                                        }
                                     } catch (e: Exception) { }
                                 }
                             }
@@ -400,13 +331,13 @@ class ImageOverlayView @JvmOverloads constructor(
                         }
                     }
                     // Draw the old frame while fetching the new one to prevent flickering
-                    cached?.second?.let { drawBitmapOp(canvas, it, interpolatedOp, videoRect) }
+                    cached?.second?.let { drawBitmapOp(canvas, it, op, videoRect) }
                 }
             } else {
                 val staticCacheKey = "${op.imageUri}_${op.chromaKeyColor}_${op.chromaKeySimilarity}"
                 val bitmap = bitmapCache[staticCacheKey]
                 if (bitmap != null) {
-                    drawBitmapOp(canvas, bitmap, interpolatedOp, videoRect)
+                    drawBitmapOp(canvas, bitmap, op, videoRect)
                 }
             }
         }
@@ -426,9 +357,57 @@ class ImageOverlayView @JvmOverloads constructor(
             centerY + imgH / 2f
         )
         
+        val start = op.startTimeMs ?: 0L
+        val end = op.endTimeMs ?: Long.MAX_VALUE
+        val clipDuration = end - start
+        val relTime = currentPositionMs - start
+        val animDuration = minOf(op.animationDurationMs, clipDuration / 2)
+
+        var animAlpha = 1.0f
+        var animScale = 1.0f
+        var animTransX = 0f
+        var animTransY = 0f
+
+        // In-animation
+        if (relTime < animDuration && animDuration > 0) {
+            val progress = (relTime.toFloat() / animDuration).coerceIn(0f, 1f)
+            when (op.inAnimation.uppercase()) {
+                "FADE", "FADE_IN", "FADE IN" -> animAlpha *= progress
+                "ZOOM", "ZOOM_IN", "ZOOM IN" -> {
+                    animScale *= (0.3f + 0.7f * progress)
+                    animAlpha *= progress
+                }
+                "SLIDE_LEFT", "SLIDE LEFT" -> animTransX += (1f - progress) * (-imgW)
+                "SLIDE_RIGHT", "SLIDE RIGHT" -> animTransX += (1f - progress) * (imgW)
+                "SLIDE_UP", "SLIDE UP" -> animTransY += (1f - progress) * (-imgH)
+                "SLIDE_DOWN", "SLIDE DOWN" -> animTransY += (1f - progress) * (imgH)
+            }
+        }
+
+        // Out-animation
+        val timeToEnd = end - currentPositionMs
+        if (timeToEnd < animDuration && animDuration > 0) {
+            val progress = (timeToEnd.toFloat() / animDuration).coerceIn(0f, 1f)
+            when (op.outAnimation.uppercase()) {
+                "FADE", "FADE_OUT", "FADE OUT" -> animAlpha *= progress
+                "ZOOM", "ZOOM_OUT", "ZOOM OUT" -> {
+                    animScale *= (0.3f + 0.7f * progress)
+                    animAlpha *= progress
+                }
+                "SLIDE_LEFT", "SLIDE LEFT" -> animTransX += (1f - progress) * (imgW)
+                "SLIDE_RIGHT", "SLIDE RIGHT" -> animTransX += (1f - progress) * (-imgW)
+                "SLIDE_UP", "SLIDE UP" -> animTransY += (1f - progress) * (imgH)
+                "SLIDE_DOWN", "SLIDE DOWN" -> animTransY += (1f - progress) * (-imgH)
+            }
+        }
+
         val oldAlpha = paint.alpha
-        paint.alpha = (op.opacity * 255).toInt().coerceIn(0, 255)
+        paint.alpha = (op.opacity * animAlpha * 255).toInt().coerceIn(0, 255)
         canvas.save()
+        canvas.translate(animTransX, animTransY)
+        if (animScale != 1.0f) {
+            canvas.scale(animScale, animScale, centerX, centerY)
+        }
         canvas.rotate(op.rotationAngle, centerX, centerY)
         
         val relativeClipTimeMs = currentPositionMs - (op.startTimeMs ?: 0L)

@@ -3,6 +3,7 @@ package com.eclip.rup.leb.customviews
 import android.content.ContentUris
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
+import android.media.ThumbnailUtils
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -13,7 +14,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -46,7 +46,7 @@ class CustomFileExplorerBottomSheet : BottomSheetDialogFragment() {
     var onFileSelectedListener: ((Uri, File) -> Unit)? = null
 
     private lateinit var rvExplorerNodes: RecyclerView
-    private lateinit var pbExplorerLoading: ProgressBar
+    private lateinit var pbExplorerLoading: ThreeDotLoadingView
     private lateinit var tvExplorerEmpty: TextView
     private lateinit var tvCurrentPath: TextView
     private lateinit var btnUpDirectory: ImageView
@@ -216,11 +216,11 @@ class CustomFileExplorerBottomSheet : BottomSheetDialogFragment() {
         return try {
             retriever.setDataSource(file.absolutePath)
             val durStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            retriever.release()
             durStr?.toLongOrNull() ?: 0L
         } catch (e: Exception) {
-            try { retriever.release() } catch (_: Exception) {}
             0L
+        } finally {
+            try { retriever.release() } catch (_: Exception) {}
         }
     }
 
@@ -336,14 +336,22 @@ class CustomFileExplorerBottomSheet : BottomSheetDialogFragment() {
         private fun loadThumbnail(file: File, isVideo: Boolean): Bitmap? {
             val context = itemView.context ?: return null
             return try {
+                val size = Size(300, 300)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    context.contentResolver.loadThumbnail(Uri.fromFile(file), Size(300, 300), null)
+                    if (isVideo) {
+                        ThumbnailUtils.createVideoThumbnail(file, size, null)
+                    } else {
+                        ThumbnailUtils.createImageThumbnail(file, size, null)
+                    }
                 } else {
-                    val retriever = MediaMetadataRetriever()
-                    retriever.setDataSource(file.absolutePath)
-                    val frame = retriever.frameAtTime
-                    retriever.release()
-                    frame
+                    var retriever: MediaMetadataRetriever? = null
+                    try {
+                        retriever = MediaMetadataRetriever()
+                        retriever.setDataSource(file.absolutePath)
+                        retriever.frameAtTime
+                    } finally {
+                        try { retriever?.release() } catch (_: Exception) {}
+                    }
                 }
             } catch (e: Exception) {
                 null

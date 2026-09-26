@@ -266,11 +266,15 @@ class ProjectImportActivity : AppCompatActivity() {
         if (uri == null) return 0L
         return try {
             contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                val retriever = MediaMetadataRetriever()
-                retriever.setDataSource(pfd.fileDescriptor)
-                val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                retriever.release()
-                durationStr?.toLong() ?: 0L
+                var retriever: MediaMetadataRetriever? = null
+                try {
+                    retriever = MediaMetadataRetriever()
+                    retriever.setDataSource(pfd.fileDescriptor)
+                    val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    durationStr?.toLong() ?: 0L
+                } finally {
+                    try { retriever?.release() } catch (_: Exception) {}
+                }
             } ?: 0L
         } catch (e: Exception) {
             0L
@@ -279,13 +283,16 @@ class ProjectImportActivity : AppCompatActivity() {
 
     private fun formatDuration(ms: Long): String {
         if (ms <= 0L) return ""
-        return if (ms < 60000L) {
-            val secsInt = (ms / 1000)
+        val totalSecs = ms / 1000
+        val hours = totalSecs / 3600
+        val mins = (totalSecs % 3600) / 60
+        val secs = totalSecs % 60
+        return if (hours > 0) {
+            String.format("%d:%02d:%02d", hours, mins, secs)
+        } else if (ms < 60000L) {
             val msRem = (ms % 1000) / 100
-            if (msRem > 0) String.format("%.1fs", ms / 1000.0f) else "${secsInt}s"
+            if (msRem > 0) String.format("%.1fs", ms / 1000.0f) else "${totalSecs}s"
         } else {
-            val mins = (ms / 60000)
-            val secs = ((ms % 60000) / 1000)
             String.format("%d:%02d", mins, secs)
         }
     }
@@ -295,20 +302,21 @@ class ProjectImportActivity : AppCompatActivity() {
         val recipe = editRecipe ?: return
 
         // Primary Video
+        val srcUri = recipe.sourceUri ?: Uri.EMPTY
         val primaryTrim = recipe.operations.filterIsInstance<EditOperation.Trim>().firstOrNull()
         val primaryReqDuration = if (primaryTrim != null) {
             primaryTrim.endMs - primaryTrim.startMs
         } else {
-            getMediaDurationMs(recipe.sourceUri)
+            getMediaDurationMs(srcUri)
         }
 
         dependencies.add(
             MediaDependency(
                 id = "primary",
                 type = DependencyType.PRIMARY,
-                originalUri = recipe.sourceUri,
+                originalUri = srcUri,
                 name = recipe.sourceName,
-                currentUri = recipe.sourceUri,
+                currentUri = srcUri,
                 requiredDurationMs = primaryReqDuration
             )
         )
@@ -474,7 +482,7 @@ class ProjectImportActivity : AppCompatActivity() {
             val recipe = editRecipe ?: return@launch
             
             val primaryDep = dependencies.find { it.type == DependencyType.PRIMARY }
-            val newSourceUri = primaryDep?.currentUri ?: recipe.sourceUri
+            val newSourceUri = primaryDep?.currentUri ?: recipe.sourceUri ?: Uri.EMPTY
             val newSourceName = primaryDep?.currentUri?.lastPathSegment ?: recipe.sourceName
 
             val newOps = recipe.operations.map { op ->
@@ -529,14 +537,31 @@ class ProjectImportActivity : AppCompatActivity() {
                 Log.e(TAG, "Failed to save updated project", e)
             }
             
-            // Check for heavy videos and trigger ProxyGenerationService
-            checkAndTriggerProxy(newSourceUri, "primary")
-            
+            // Validate all video resolutions (maximum 1080p supported)
+            val allVideoUris = mutableListOf<Uri>()
+            allVideoUris.add(newSourceUri)
             val mergeOps = newOps.filterIsInstance<EditOperation.Merge>()
             mergeOps.forEach { mergeOp ->
-                mergeOp.items.forEachIndexed { index, item ->
-                    checkAndTriggerProxy(item.uri, "merge_${mergeOp.id}_$index")
+                mergeOp.items.forEach { item ->
+                    if (!item.isImage) {
+                        allVideoUris.add(item.uri)
+                    }
                 }
+            }
+            val hasAbove1080p = allVideoUris.any { uri ->
+                com.eclip.rup.leb.utils.MediaValidator.checkIsAbove1080p(this@ProjectImportActivity, uri)
+            }
+            if (hasAbove1080p) {
+                withContext(Dispatchers.Main) {
+                    com.google.android.material.dialog.MaterialAlertDialogBuilder(this@ProjectImportActivity)
+                        .setTitle(R.string.str_unsupported_resolution_title)
+                        .setMessage(R.string.str_unsupported_resolution_warning)
+                        .setPositiveButton(android.R.string.ok) { _, _ ->
+                            finish()
+                        }
+                        .show()
+                }
+                return@launch
             }
 
             withContext(Dispatchers.Main) {
@@ -550,17 +575,23 @@ class ProjectImportActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadThumbnail(uri: Uri, type: DependencyType): Bitmap? {
+    private suspend fun loadThumbnail(uri: Uri, type: DependencyType): Bitmap? {
         if (type == DependencyType.AUDIO) return null
 
         // 1. Try MediaMetadataRetriever via FileDescriptor (works for all video sources and video overlays)
         try {
             contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                val retriever = MediaMetadataRetriever()
-                retriever.setDataSource(pfd.fileDescriptor)
-                val bmp = retriever.getFrameAtTime(1000000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    ?: retriever.getFrameAtTime()
-                retriever.release()
+                var retriever: MediaMetadataRetriever? = null
+                val bmp = try {
+                    retriever = MediaMetadataRetriever()
+                    retriever.setDataSource(pfd.fileDescriptor)
+                    com.eclip.rup.leb.utils.CodecInstancePool.withHardwareCodecPermit {
+                        retriever.getFrameAtTime(1000000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                            ?: retriever.getFrameAtTime()
+                    }
+                } finally {
+                    try { retriever?.release() } catch (_: Exception) {}
+                }
                 if (bmp != null) return bmp
             }
         } catch (e: Exception) {
@@ -682,39 +713,5 @@ class ProjectImportActivity : AppCompatActivity() {
         }
 
         override fun getItemCount() = items.size
-    }
-
-    private fun checkAndTriggerProxy(uri: Uri, dependencyId: String) {
-        if (isHeavyVideo(uri)) {
-            val intent = Intent(this, com.eclip.rup.leb.services.ProxyGenerationService::class.java).apply {
-                putExtra(com.eclip.rup.leb.services.ProxyGenerationService.EXTRA_SOURCE_URI, uri.toString())
-                putExtra(com.eclip.rup.leb.services.ProxyGenerationService.EXTRA_DEPENDENCY_ID, dependencyId)
-            }
-            androidx.core.content.ContextCompat.startForegroundService(this, intent)
-            Log.d(TAG, "Triggered ProxyGenerationService for heavy video: $uri")
-        }
-    }
-
-    private fun isHeavyVideo(uri: Uri): Boolean {
-        return try {
-            contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                val retriever = MediaMetadataRetriever()
-                retriever.setDataSource(pfd.fileDescriptor)
-                val widthStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
-                val heightStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
-                val bitrateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
-                retriever.release()
-
-                val width = widthStr?.toIntOrNull() ?: 0
-                val height = heightStr?.toIntOrNull() ?: 0
-                val bitrate = bitrateStr?.toLongOrNull() ?: 0L
-
-                // Consider heavy if 4K (either dimension >= 2160) or bitrate > 30 Mbps (30000000)
-                width >= 2160 || height >= 2160 || bitrate > 30_000_000L
-            } ?: false
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to check if video is heavy", e)
-            false
-        }
     }
 }

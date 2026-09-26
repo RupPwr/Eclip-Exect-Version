@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.media.MediaMetadataRetriever
+import android.media.ThumbnailUtils
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -20,7 +21,6 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -36,6 +36,7 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator
 import com.eclip.rup.leb.R
+import com.eclip.rup.leb.models.TimelineClip
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -57,14 +58,35 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
         val dateAdded: Long,
         val bucketName: String = "All",
         val artist: String = "Unknown Artist",
-        val localFile: File? = null
+        val localFile: File? = null,
+        val width: Int = 0,
+        val height: Int = 0,
+        val filePath: String? = null
     )
+
+    fun MediaModel.toTimelineClip(): TimelineClip {
+        val resolvedPath = filePath?.takeIf { it.isNotBlank() } ?: uri.toString()
+        val effectiveDuration = when (type) {
+            MediaType.IMAGE -> 3000L
+            else -> durationMs
+        }
+        return TimelineClip(
+            path = resolvedPath,
+            durationMs = effectiveDuration,
+            width = width,
+            height = height,
+            isImage = (type == MediaType.IMAGE),
+            hasAudio = (type != MediaType.IMAGE)
+        )
+    }
 
     var initialMediaType: MediaType = MediaType.VIDEO
     var showCategoryTabs: Boolean = true
     var showAudioTab: Boolean = false
     var onMediaSelectedListener: ((Uri) -> Unit)? = null
     var onMultipleMediaSelectedListener: ((List<Uri>) -> Unit)? = null
+    var onClipSelectedListener: ((TimelineClip) -> Unit)? = null
+    var onMultipleClipsSelectedListener: ((List<TimelineClip>) -> Unit)? = null
     var onBrowseSystemFoldersRequested: (() -> Unit)? = null
 
     // UI Views
@@ -96,15 +118,33 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
     private var selectedAdapter: SelectedThumbAdapter? = null
     private var tabMediator: TabLayoutMediator? = null
 
-    // In-memory bitmap cache for smooth 60fps scrolling
-    private val thumbnailCache = object : LruCache<String, Bitmap>(150) {}
+    // Shared RecycledViewPool across tab grids for smooth instant tab transitions
+    private val sharedRecycledViewPool = RecyclerView.RecycledViewPool().apply {
+        setMaxRecycledViews(0, 40)
+        setMaxRecycledViews(1, 15)
+    }
+
+    // Guard against duplicate concurrent tab queries
+    private val tabLoadingMap = mutableMapOf<TabType, Boolean>()
+
+    // In-memory bitmap cache with memory-size awareness for 60fps scrolling
+    private val thumbnailCache = object : LruCache<String, Bitmap>(
+        (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt().coerceAtLeast(1024 * 16)
+    ) {
+        override fun sizeOf(key: String, value: Bitmap): Int {
+            return value.byteCount / 1024
+        }
+    }
+
+    // Raw media cache by media type to avoid duplicate MediaStore queries
+    private val rawMediaCache = mutableMapOf<MediaType, List<MediaModel>>()
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val granted = permissions.values.any { it }
         if (granted) {
-            loadMediaForAllTabs()
+            loadCurrentTabMedia()
         } else {
             for (tab in availableTabs) {
                 activePageHolders[tab]?.showPermissionDenied()
@@ -227,6 +267,17 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
         if (initialIndex >= 0) {
             viewPagerGallery.setCurrentItem(initialIndex, false)
         }
+
+        // Lazy-load tabs on demand as user swipes or selects them
+        viewPagerGallery.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                super.onPageSelected(position)
+                val tab = availableTabs.getOrNull(position) ?: return
+                if (hasRequiredPermissions() && tabLoadedMap[tab] != true) {
+                    loadMediaForTab(tab)
+                }
+            }
+        })
     }
 
     private fun setupSelectedTray() {
@@ -266,8 +317,19 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
 
         btnConfirmSelection.setOnClickListener {
             if (selectedItems.isNotEmpty()) {
-                onMultipleMediaSelectedListener?.invoke(selectedItems.map { it.uri })
-                onMediaSelectedListener?.invoke(selectedItems.first().uri)
+                val clips = selectedItems.map { it.toTimelineClip() }
+                val uris = selectedItems.map { it.uri }
+                
+                if (onMultipleClipsSelectedListener != null) {
+                    onMultipleClipsSelectedListener?.invoke(clips)
+                } else if (onClipSelectedListener != null) {
+                    onClipSelectedListener?.invoke(clips.first())
+                } else if (onMultipleMediaSelectedListener != null) {
+                    onMultipleMediaSelectedListener?.invoke(uris)
+                } else if (onMediaSelectedListener != null) {
+                    onMediaSelectedListener?.invoke(uris.first())
+                }
+                
                 dismiss()
             }
         }
@@ -320,10 +382,16 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
 
     private fun checkPermissionsAndLoadMedia() {
         if (hasRequiredPermissions()) {
-            loadMediaForAllTabs()
+            loadCurrentTabMedia()
         } else {
             requestStoragePermissions()
         }
+    }
+
+    private fun loadCurrentTabMedia() {
+        val currentPosition = if (::viewPagerGallery.isInitialized) viewPagerGallery.currentItem else 0
+        val activeTab = availableTabs.getOrNull(currentPosition) ?: availableTabs.firstOrNull() ?: return
+        loadMediaForTab(activeTab)
     }
 
     private fun hasRequiredPermissions(): Boolean {
@@ -358,26 +426,38 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
         permissionLauncher.launch(permissionsToRequest.toTypedArray())
     }
 
-    private fun loadMediaForAllTabs() {
-        for (tab in availableTabs) {
-            loadMediaForTab(tab)
-        }
+    private fun getMediaForType(type: MediaType): List<MediaModel> {
+        rawMediaCache[type]?.let { return it }
+        val loaded = queryMediaStoreMedia(type)
+        rawMediaCache[type] = loaded
+        return loaded
     }
 
     private fun loadMediaForTab(tabType: TabType) {
+        if (tabLoadedMap[tabType] == true && tabDataMap[tabType]?.isNotEmpty() == true) {
+            activePageHolders[tabType]?.updateEmptyState(tabDataMap[tabType]!!.isEmpty(), tabType)
+            return
+        }
+        if (tabLoadingMap[tabType] == true) return
+        tabLoadingMap[tabType] = true
+
         val holder = activePageHolders[tabType]
         holder?.showLoading()
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val items = when (tabType) {
-                TabType.VIDEO -> queryMediaStoreMedia(MediaType.VIDEO)
-                TabType.PHOTO -> queryMediaStoreMedia(MediaType.IMAGE)
-                TabType.ALL -> {
-                    val vList = queryMediaStoreMedia(MediaType.VIDEO)
-                    val pList = queryMediaStoreMedia(MediaType.IMAGE)
-                    (vList + pList).sortedByDescending { it.dateAdded }
+            val items = try {
+                when (tabType) {
+                    TabType.VIDEO -> getMediaForType(MediaType.VIDEO)
+                    TabType.PHOTO -> getMediaForType(MediaType.IMAGE)
+                    TabType.ALL -> {
+                        val vList = getMediaForType(MediaType.VIDEO)
+                        val pList = getMediaForType(MediaType.IMAGE)
+                        (vList + pList).sortedByDescending { it.dateAdded }
+                    }
+                    TabType.AUDIO -> getMediaForType(MediaType.AUDIO)
                 }
-                TabType.AUDIO -> queryMediaStoreMedia(MediaType.AUDIO)
+            } finally {
+                tabLoadingMap[tabType] = false
             }
 
             withContext(Dispatchers.Main) {
@@ -405,7 +485,10 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
                     MediaStore.Video.Media.DISPLAY_NAME,
                     MediaStore.Video.Media.DURATION,
                     MediaStore.Video.Media.DATE_ADDED,
-                    MediaStore.Video.Media.BUCKET_DISPLAY_NAME
+                    MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
+                    MediaStore.Video.Media.WIDTH,
+                    MediaStore.Video.Media.HEIGHT,
+                    MediaStore.MediaColumns.DATA
                 )
             )
             MediaType.IMAGE -> Pair(
@@ -414,7 +497,10 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
                     MediaStore.Images.Media._ID,
                     MediaStore.Images.Media.DISPLAY_NAME,
                     MediaStore.Images.Media.DATE_ADDED,
-                    MediaStore.Images.Media.BUCKET_DISPLAY_NAME
+                    MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+                    MediaStore.Images.Media.WIDTH,
+                    MediaStore.Images.Media.HEIGHT,
+                    MediaStore.MediaColumns.DATA
                 )
             )
             MediaType.AUDIO -> Pair(
@@ -425,7 +511,8 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
                     MediaStore.Audio.Media.DURATION,
                     MediaStore.Audio.Media.DATE_ADDED,
                     MediaStore.Audio.Media.ALBUM,
-                    MediaStore.Audio.Media.ARTIST
+                    MediaStore.Audio.Media.ARTIST,
+                    MediaStore.MediaColumns.DATA
                 )
             )
         }
@@ -438,6 +525,9 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
                 val durationColumn = if (type != MediaType.IMAGE) cursor.getColumnIndex(MediaStore.MediaColumns.DURATION) else -1
                 val bucketColumn = if (type != MediaType.AUDIO) cursor.getColumnIndex(MediaStore.Video.Media.BUCKET_DISPLAY_NAME) else cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM)
                 val artistColumn = if (type == MediaType.AUDIO) cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST) else -1
+                val widthColumn = cursor.getColumnIndex(MediaStore.MediaColumns.WIDTH)
+                val heightColumn = cursor.getColumnIndex(MediaStore.MediaColumns.HEIGHT)
+                val dataColumn = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
 
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idColumn)
@@ -446,6 +536,9 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
                     val duration = if (durationColumn != -1 && !cursor.isNull(durationColumn)) cursor.getLong(durationColumn) else 0L
                     val bucketName = if (bucketColumn != -1 && !cursor.isNull(bucketColumn)) cursor.getString(bucketColumn) ?: "All" else "All"
                     val artistName = if (artistColumn != -1 && !cursor.isNull(artistColumn)) cursor.getString(artistColumn) ?: "Unknown Artist" else "Unknown Artist"
+                    val width = if (widthColumn != -1 && !cursor.isNull(widthColumn)) cursor.getInt(widthColumn) else 0
+                    val height = if (heightColumn != -1 && !cursor.isNull(heightColumn)) cursor.getInt(heightColumn) else 0
+                    val dataPath = if (dataColumn != -1 && !cursor.isNull(dataColumn)) cursor.getString(dataColumn) else null
                     val uri = ContentUris.withAppendedId(contentUri, id)
 
                     result.add(
@@ -457,7 +550,10 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
                             type = type,
                             dateAdded = dateAdded,
                             bucketName = bucketName,
-                            artist = artistName
+                            artist = artistName,
+                            width = width,
+                            height = height,
+                            filePath = dataPath
                         )
                     )
                 }
@@ -528,7 +624,8 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
                             type = type,
                             dateAdded = file.lastModified() / 1000,
                             bucketName = dir.name,
-                            localFile = file
+                            localFile = file,
+                            filePath = file.absolutePath
                         )
                     )
                 }
@@ -541,11 +638,11 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
         return try {
             retriever.setDataSource(file.absolutePath)
             val durStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            retriever.release()
             durStr?.toLongOrNull() ?: 0L
         } catch (e: Exception) {
-            try { retriever.release() } catch (_: Exception) {}
             0L
+        } finally {
+            try { retriever.release() } catch (_: Exception) {}
         }
     }
 
@@ -577,7 +674,7 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
 
     private inner class GalleryPageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val rvPageMediaGrid: RecyclerView = itemView.findViewById(R.id.rvPageMediaGrid)
-        val pbPageLoading: ProgressBar = itemView.findViewById(R.id.pbPageLoading)
+        val pbPageLoading: ThreeDotLoadingView = itemView.findViewById(R.id.pbPageLoading)
         val layoutPageEmptyContainer: View = itemView.findViewById(R.id.layoutPageEmptyContainer)
         val tvPageEmptyState: TextView = itemView.findViewById(R.id.tvPageEmptyState)
         val btnPageGrantPermission: View = itemView.findViewById(R.id.btnPageGrantPermission)
@@ -588,6 +685,10 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
         fun bind(tabType: TabType) {
             currentTab = tabType
             activePageHolders[tabType] = this
+
+            rvPageMediaGrid.setRecycledViewPool(sharedRecycledViewPool)
+            rvPageMediaGrid.setHasFixedSize(true)
+            rvPageMediaGrid.itemAnimator = null
 
             rvPageMediaGrid.layoutManager = if (tabType == TabType.AUDIO) {
                 GridLayoutManager(itemView.context, 1)
@@ -617,7 +718,11 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
                 updateEmptyState(items.isEmpty(), tabType)
             } else {
                 if (hasRequiredPermissions()) {
-                    loadMediaForTab(tabType)
+                    val currentPos = if (::viewPagerGallery.isInitialized) viewPagerGallery.currentItem else 0
+                    val currentTab = availableTabs.getOrNull(currentPos)
+                    if (tabType == currentTab) {
+                        loadMediaForTab(tabType)
+                    }
                 } else {
                     showPermissionDenied()
                 }
@@ -654,86 +759,86 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
     }
 
     // -------------------------------------------------------------
-    // Main 4-Column Media Grid Adapter
+    // Main Media Adapter supporting lightweight Grid and Audio rows
     // -------------------------------------------------------------
     private inner class MediaGridAdapter(
         private val items: List<MediaModel>,
         private val onItemClick: (MediaModel) -> Unit
-    ) : RecyclerView.Adapter<MediaGridViewHolder>() {
+    ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MediaGridViewHolder {
-            val view = LayoutInflater.from(parent.context).inflate(R.layout.item_media_picker_thumbnail, parent, false)
-            return MediaGridViewHolder(view)
+        override fun getItemViewType(position: Int): Int {
+            return if (items[position].type == MediaType.AUDIO) 1 else 0
         }
 
-        override fun onBindViewHolder(holder: MediaGridViewHolder, position: Int) {
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val inflater = LayoutInflater.from(parent.context)
+            return if (viewType == 1) {
+                val view = inflater.inflate(R.layout.item_media_picker_audio, parent, false)
+                AudioItemViewHolder(view)
+            } else {
+                val view = inflater.inflate(R.layout.item_media_picker_thumbnail, parent, false)
+                MediaThumbnailViewHolder(view)
+            }
+        }
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
             val item = items[position]
             val selectionIndex = selectedItems.indexOfFirst { it.uri == item.uri }
-            holder.bind(item, selectionIndex, onItemClick)
+            when (holder) {
+                is MediaThumbnailViewHolder -> holder.bind(item, selectionIndex, onItemClick)
+                is AudioItemViewHolder -> holder.bind(item, selectionIndex, onItemClick)
+            }
+        }
+
+        override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+            super.onViewRecycled(holder)
+            when (holder) {
+                is MediaThumbnailViewHolder -> holder.cancelPendingJobs()
+                is AudioItemViewHolder -> holder.cancelPendingJobs()
+            }
         }
 
         override fun getItemCount(): Int = items.size
     }
 
-    private inner class MediaGridViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        val layoutGridContainer: View = itemView.findViewById(R.id.layoutGridContainer)
+    private inner class MediaThumbnailViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val ivThumbnail: ImageView = itemView.findViewById(R.id.ivThumbnail)
         val vSelectedOverlay: View = itemView.findViewById(R.id.vSelectedOverlay)
         val layoutSelectionBadge: FrameLayout = itemView.findViewById(R.id.layoutSelectionBadge)
         val tvSelectionNumber: TextView = itemView.findViewById(R.id.tvSelectionNumber)
         val tvDuration: TextView = itemView.findViewById(R.id.tvDuration)
 
-        // Audio Views
-        val layoutAudioContainer: View = itemView.findViewById(R.id.layoutAudioContainer)
-        val ivAudioCover: com.google.android.material.imageview.ShapeableImageView = itemView.findViewById(R.id.ivAudioCover)
-        val tvAudioTitle: TextView = itemView.findViewById(R.id.tvAudioTitle)
-        val tvAudioSubTitle: TextView = itemView.findViewById(R.id.tvAudioSubTitle)
-        val tvAudioDuration: TextView = itemView.findViewById(R.id.tvAudioDuration)
+        private var thumbnailJob: kotlinx.coroutines.Job? = null
+
+        fun cancelPendingJobs() {
+            thumbnailJob?.cancel()
+            thumbnailJob = null
+        }
 
         fun bind(item: MediaModel, selectionIndex: Int, onItemClick: (MediaModel) -> Unit) {
+            cancelPendingJobs()
             itemView.tag = item.id
 
-            if (item.type == MediaType.AUDIO) {
-                layoutGridContainer.visibility = View.GONE
-                layoutAudioContainer.visibility = View.VISIBLE
+            val isSelected = selectionIndex >= 0
+            vSelectedOverlay.visibility = if (isSelected) View.VISIBLE else View.GONE
 
-                tvAudioTitle.text = item.displayName
-                val subText = if (item.artist.isNotBlank() && item.artist != "<unknown>") item.artist else item.bucketName
-                tvAudioSubTitle.text = subText
-                tvAudioDuration.text = formatDuration(item.durationMs)
-
-                val isSelected = selectionIndex >= 0
-                itemView.setBackgroundColor(if (isSelected) Color.parseColor("#2A1118") else Color.TRANSPARENT)
-
-                loadAudioAlbumArtAsync(item, ivAudioCover)
+            if (isSelected) {
+                layoutSelectionBadge.setBackgroundResource(R.drawable.bg_gallery_selected_badge)
+                tvSelectionNumber.visibility = View.VISIBLE
+                tvSelectionNumber.text = (selectionIndex + 1).toString()
             } else {
-                layoutGridContainer.visibility = View.VISIBLE
-                layoutAudioContainer.visibility = View.GONE
-
-                val isSelected = selectionIndex >= 0
-
-                // Selection Visuals
-                vSelectedOverlay.visibility = if (isSelected) View.VISIBLE else View.GONE
-
-                if (isSelected) {
-                    layoutSelectionBadge.setBackgroundResource(R.drawable.bg_gallery_selected_badge)
-                    tvSelectionNumber.visibility = View.VISIBLE
-                    tvSelectionNumber.text = (selectionIndex + 1).toString()
-                } else {
-                    layoutSelectionBadge.setBackgroundResource(R.drawable.bg_gallery_unselected_badge)
-                    tvSelectionNumber.visibility = View.GONE
-                }
-
-                // Video Badges
-                if (item.type == MediaType.VIDEO) {
-                    tvDuration.visibility = View.VISIBLE
-                    tvDuration.text = formatDuration(item.durationMs)
-                } else {
-                    tvDuration.visibility = View.GONE
-                }
-
-                loadThumbnailAsync(item, ivThumbnail)
+                layoutSelectionBadge.setBackgroundResource(R.drawable.bg_gallery_unselected_badge)
+                tvSelectionNumber.visibility = View.GONE
             }
+
+            if (item.type == MediaType.VIDEO) {
+                tvDuration.visibility = View.VISIBLE
+                tvDuration.text = formatDuration(item.durationMs)
+            } else {
+                tvDuration.visibility = View.GONE
+            }
+
+            loadThumbnailAsync(item, ivThumbnail)
 
             itemView.setOnClickListener {
                 onItemClick(item)
@@ -750,7 +855,7 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
 
             targetView.setImageBitmap(null)
 
-            lifecycleScope.launch(Dispatchers.IO) {
+            thumbnailJob = lifecycleScope.launch(Dispatchers.IO) {
                 val bitmap = loadThumbnail(item)
                 if (bitmap != null) {
                     thumbnailCache.put(cacheKey, bitmap)
@@ -768,8 +873,88 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
             }
         }
 
+        private fun loadThumbnail(item: MediaModel): Bitmap? {
+            val context = itemView.context ?: return null
+            return try {
+                val size = Size(270, 270)
+                if (item.localFile != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        if (item.type == MediaType.VIDEO) {
+                            ThumbnailUtils.createVideoThumbnail(item.localFile, size, null)
+                        } else {
+                            ThumbnailUtils.createImageThumbnail(item.localFile, size, null)
+                        }
+                    } else {
+                        var retriever: MediaMetadataRetriever? = null
+                        try {
+                            retriever = MediaMetadataRetriever()
+                            retriever.setDataSource(item.localFile.absolutePath)
+                            retriever.frameAtTime
+                        } finally {
+                            try { retriever?.release() } catch (_: Exception) {}
+                        }
+                    }
+                } else {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        context.contentResolver.loadThumbnail(item.uri, size, null)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        if (item.type == MediaType.VIDEO) {
+                            val id = ContentUris.parseId(item.uri)
+                            MediaStore.Video.Thumbnails.getThumbnail(context.contentResolver, id, MediaStore.Video.Thumbnails.MINI_KIND, null)
+                        } else {
+                            val id = ContentUris.parseId(item.uri)
+                            MediaStore.Images.Thumbnails.getThumbnail(context.contentResolver, id, MediaStore.Images.Thumbnails.MINI_KIND, null)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        private fun formatDuration(durationMs: Long): String {
+            val totalSeconds = durationMs / 1000
+            val minutes = totalSeconds / 60
+            val seconds = totalSeconds % 60
+            return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+        }
+    }
+
+    private inner class AudioItemViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val ivAudioCover: com.google.android.material.imageview.ShapeableImageView = itemView.findViewById(R.id.ivAudioCover)
+        val tvAudioTitle: TextView = itemView.findViewById(R.id.tvAudioTitle)
+        val tvAudioSubTitle: TextView = itemView.findViewById(R.id.tvAudioSubTitle)
+        val tvAudioDuration: TextView = itemView.findViewById(R.id.tvAudioDuration)
+
+        private var audioCoverJob: kotlinx.coroutines.Job? = null
+
+        fun cancelPendingJobs() {
+            audioCoverJob?.cancel()
+            audioCoverJob = null
+        }
+
+        fun bind(item: MediaModel, selectionIndex: Int, onItemClick: (MediaModel) -> Unit) {
+            cancelPendingJobs()
+            itemView.tag = item.id
+
+            tvAudioTitle.text = item.displayName
+            val subText = if (item.artist.isNotBlank() && item.artist != "<unknown>") item.artist else item.bucketName
+            tvAudioSubTitle.text = subText
+            tvAudioDuration.text = formatDuration(item.durationMs)
+
+            val isSelected = selectionIndex >= 0
+            itemView.setBackgroundColor(if (isSelected) Color.parseColor("#2A1118") else Color.TRANSPARENT)
+
+            loadAudioAlbumArtAsync(item, ivAudioCover)
+
+            itemView.setOnClickListener {
+                onItemClick(item)
+            }
+        }
+
         private fun loadAudioAlbumArtAsync(item: MediaModel, targetView: ImageView) {
-            lifecycleScope.launch(Dispatchers.IO) {
+            audioCoverJob = lifecycleScope.launch(Dispatchers.IO) {
                 val albumArt = loadAudioAlbumArt(item)
                 withContext(Dispatchers.Main) {
                     if (itemView.tag == item.id) {
@@ -789,54 +974,24 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
             }
         }
 
-        private fun loadThumbnail(item: MediaModel): Bitmap? {
-            val context = itemView.context ?: return null
-            return try {
-                if (item.localFile != null) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        context.contentResolver.loadThumbnail(item.uri, Size(300, 300), null)
-                    } else {
-                        val retriever = MediaMetadataRetriever()
-                        retriever.setDataSource(item.localFile.absolutePath)
-                        val frame = retriever.frameAtTime
-                        retriever.release()
-                        frame
-                    }
-                } else {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        context.contentResolver.loadThumbnail(item.uri, Size(300, 300), null)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        if (item.type == MediaType.VIDEO) {
-                            val id = ContentUris.parseId(item.uri)
-                            MediaStore.Video.Thumbnails.getThumbnail(context.contentResolver, id, MediaStore.Video.Thumbnails.MINI_KIND, null)
-                        } else {
-                            val id = ContentUris.parseId(item.uri)
-                            MediaStore.Images.Thumbnails.getThumbnail(context.contentResolver, id, MediaStore.Images.Thumbnails.MINI_KIND, null)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                null
-            }
-        }
-
         private fun loadAudioAlbumArt(item: MediaModel): Bitmap? {
             val context = itemView.context ?: return null
+            var retriever: MediaMetadataRetriever? = null
             return try {
-                val retriever = MediaMetadataRetriever()
+                retriever = MediaMetadataRetriever()
                 if (item.localFile != null) {
                     retriever.setDataSource(item.localFile.absolutePath)
                 } else {
                     retriever.setDataSource(context, item.uri)
                 }
                 val artBytes = retriever.embeddedPicture
-                retriever.release()
                 if (artBytes != null) {
                     BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size)
                 } else null
             } catch (e: Exception) {
                 null
+            } finally {
+                try { retriever?.release() } catch (_: Exception) {}
             }
         }
 
@@ -911,16 +1066,36 @@ class MediaPickerBottomSheet : BottomSheetDialogFragment() {
         private fun loadThumbnail(item: MediaModel): Bitmap? {
             val context = itemView.context ?: return null
             return try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    context.contentResolver.loadThumbnail(item.uri, Size(200, 200), null)
-                } else {
-                    @Suppress("DEPRECATION")
-                    if (item.type == MediaType.VIDEO) {
-                        val id = ContentUris.parseId(item.uri)
-                        MediaStore.Video.Thumbnails.getThumbnail(context.contentResolver, id, MediaStore.Video.Thumbnails.MINI_KIND, null)
+                val size = Size(200, 200)
+                if (item.localFile != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        if (item.type == MediaType.VIDEO) {
+                            ThumbnailUtils.createVideoThumbnail(item.localFile, size, null)
+                        } else {
+                            ThumbnailUtils.createImageThumbnail(item.localFile, size, null)
+                        }
                     } else {
-                        val id = ContentUris.parseId(item.uri)
-                        MediaStore.Images.Thumbnails.getThumbnail(context.contentResolver, id, MediaStore.Images.Thumbnails.MINI_KIND, null)
+                        var retriever: MediaMetadataRetriever? = null
+                        try {
+                            retriever = MediaMetadataRetriever()
+                            retriever.setDataSource(item.localFile.absolutePath)
+                            retriever.frameAtTime
+                        } finally {
+                            try { retriever?.release() } catch (_: Exception) {}
+                        }
+                    }
+                } else {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        context.contentResolver.loadThumbnail(item.uri, size, null)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        if (item.type == MediaType.VIDEO) {
+                            val id = ContentUris.parseId(item.uri)
+                            MediaStore.Video.Thumbnails.getThumbnail(context.contentResolver, id, MediaStore.Video.Thumbnails.MINI_KIND, null)
+                        } else {
+                            val id = ContentUris.parseId(item.uri)
+                            MediaStore.Images.Thumbnails.getThumbnail(context.contentResolver, id, MediaStore.Images.Thumbnails.MINI_KIND, null)
+                        }
                     }
                 }
             } catch (e: Exception) {

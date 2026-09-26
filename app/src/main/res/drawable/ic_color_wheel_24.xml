@@ -1,0 +1,34 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Red segment -->
+    <path
+        android:fillColor="#FF2D55"
+        android:pathData="M12,12 L12,2 A10,10 0 0,1 20.66,7 Z" />
+    <!-- Yellow segment -->
+    <path
+        android:fillColor="#FFCC00"
+        android:pathData="M12,12 L20.66,7 A10,10 0 0,1 20.66,17 Z" />
+    <!-- Green segment -->
+    <path
+        android:fillColor="#34C759"
+        android:pathData="M12,12 L20.66,17 A10,10 0 0,1 12,22 Z" />
+    <!-- Cyan segment -->
+    <path
+        android:fillColor="#00C7BE"
+        android:pathData="M12,12 L12,22 A10,10 0 0,1 3.34,17 Z" />
+    <!-- Blue segment -->
+    <path
+        android:fillColor="#007AFF"
+        android:pathData="M12,12 L3.34,17 A10,10 0 0,1 3.34,7 Z" />
+    <!-- Purple segment -->
+    <path
+        android:fillColor="#AF52DE"
+        android:pathData="M12,12 L3.34,7 A10,10 0 0,1 12,2 Z" />
+    <!-- Subtle center smooth blending overlay -->
+    <path
+        android:fillColor="#15FFFFFF"
+        android:pathData="M12,12 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+</vector>

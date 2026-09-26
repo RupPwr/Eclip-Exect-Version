@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/fontSelectionPanel"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingTop="8dp"
+    android:paddingBottom="4dp"
+    android:paddingHorizontal="16dp">
+
+    <!-- Top Row: Language / Style Category Tabs + Import Button -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="8dp">
+
+        <!-- Horizontal Scrollable Language Category Chips -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvFontCategories"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:scrollbars="none"
+            android:overScrollMode="never" />
+
+        <!-- Import Custom Font Button (+) -->
+        <FrameLayout
+            android:id="@+id/btnImportFontPanel"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_font_chip_normal"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_add_24"
+                app:tint="#FFFFFF" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- Vertical Font List -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvFontCards"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:scrollbars="none"
+            android:overScrollMode="never"
+            android:clipToPadding="false"
+            android:paddingBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tvEmptyCategoryFonts"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="No fonts in this category"
+            android:textColor="#8A8A93"
+            android:textSize="13sp"
+            android:visibility="gone" />
+    </FrameLayout>
+
+</LinearLayout>
+

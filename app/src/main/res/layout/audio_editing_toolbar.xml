@@ -100,173 +100,191 @@
     </LinearLayout>
 
     <!-- Toolbar Row -->
-    <LinearLayout
+    <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:orientation="horizontal"
-        android:gravity="center"
-        android:background="@drawable/bg_bottom_nav_docked"
-        android:paddingVertical="8dp"
-        android:paddingHorizontal="8dp"
-        android:elevation="12dp">
+        android:scrollbars="none"
+        android:requiresFadingEdge="horizontal"
+        android:fadingEdgeLength="32dp"
+        android:fillViewport="true">
 
-        <!-- Cancel -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center">
-            <ImageButton
-                android:id="@+id/btnAudioCancel"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="@drawable/tool_button_inactive"
-                android:src="@drawable/ic_close_24"
-                android:padding="8dp"
-                android:scaleType="fitCenter"
-                app:tint="@color/toolTextInactive" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/cancel"
-                android:textSize="11sp"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="@color/toolTextInactive"/>
-        </LinearLayout>
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingVertical="8dp"
+            android:paddingHorizontal="4dp">
 
-        <!-- Beats -->
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center">
-            <ImageButton
-                android:id="@+id/btnAudioBeats"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="@drawable/tool_button_inactive"
-                android:src="@drawable/ic_bolt_24"
-                android:padding="8dp"
-                android:scaleType="fitCenter"
-                app:tint="@color/toolTextInactive" />
-            <TextView
-                android:layout_width="wrap_content"
+            <!-- Cancel -->
+            <LinearLayout
+                android:layout_width="56dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/str_beats"
-                android:textSize="11sp"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="@color/toolTextInactive"/>
-        </LinearLayout>
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnAudioCancel"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_close_24"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    app:tint="@color/toolTextInactive" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="@string/cancel"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/toolTextInactive"/>
+            </LinearLayout>
 
-        <!-- Ducking -->
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center">
-            <ImageButton
-                android:id="@+id/btnAudioDucking"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="@drawable/tool_button_inactive"
-                android:src="@drawable/ic_ducking"
-                android:padding="8dp"
-                android:scaleType="fitCenter"
-                app:tint="@color/toolTextInactive" />
-            <TextView
-                android:layout_width="wrap_content"
+            <!-- Beats -->
+            <LinearLayout
+                android:layout_width="56dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/str_ducking"
-                android:textSize="11sp"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="@color/toolTextInactive"/>
-        </LinearLayout>
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnAudioBeats"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_bolt_24"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    app:tint="@color/toolTextInactive" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="@string/str_beats"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/toolTextInactive"/>
+            </LinearLayout>
 
-        <!-- Fade -->
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center">
-            <ImageButton
-                android:id="@+id/btnAudioFade"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="@drawable/tool_button_inactive"
-                android:src="@drawable/ic_fade"
-                android:padding="8dp"
-                android:scaleType="fitCenter"
-                app:tint="@color/toolTextInactive" />
-            <TextView
-                android:layout_width="wrap_content"
+            <!-- Ducking -->
+            <LinearLayout
+                android:layout_width="56dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/str_fade"
-                android:textSize="11sp"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="@color/toolTextInactive"/>
-        </LinearLayout>
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnAudioDucking"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_ducking"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    app:tint="@color/toolTextInactive" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="@string/str_ducking"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/toolTextInactive"/>
+            </LinearLayout>
 
-        <!-- Delete -->
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center">
-            <ImageButton
-                android:id="@+id/btnAudioDelete"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="@drawable/tool_button_inactive"
-                android:src="@drawable/ic_delete_24"
-                android:padding="8dp"
-                android:scaleType="fitCenter"
-                app:tint="#F44336" />
-            <TextView
-                android:layout_width="wrap_content"
+            <!-- Fade -->
+            <LinearLayout
+                android:layout_width="56dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/delete"
-                android:textSize="11sp"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="#F44336"/>
-        </LinearLayout>
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnAudioFade"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_fade"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    app:tint="@color/toolTextInactive" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="@string/str_fade"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/toolTextInactive"/>
+            </LinearLayout>
 
-        <!-- Done -->
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center">
-            <ImageButton
-                android:id="@+id/btnAudioDone"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="@drawable/tool_button_inactive"
-                android:src="@drawable/ic_check_24"
-                android:padding="8dp"
-                android:scaleType="fitCenter"
-                app:tint="@color/colorPrimary" />
-            <TextView
-                android:layout_width="wrap_content"
+            <!-- Delete -->
+            <LinearLayout
+                android:layout_width="56dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/done"
-                android:textSize="11sp"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="@color/colorPrimary"/>
-        </LinearLayout>
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnAudioDelete"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_delete_24"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    app:tint="#F44336" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="@string/delete"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="#F44336"/>
+            </LinearLayout>
 
-    </LinearLayout>
+            <!-- Done -->
+            <LinearLayout
+                android:layout_width="56dp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center">
+                <ImageButton
+                    android:id="@+id/btnAudioDone"
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="@drawable/tool_button_inactive"
+                    android:src="@drawable/ic_check_24"
+                    android:padding="8dp"
+                    android:scaleType="fitCenter"
+                    app:tint="@color/colorPrimary" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="@string/done"
+                    android:textSize="9sp"
+                    android:singleLine="true"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/colorPrimary"/>
+            </LinearLayout>
+
+        </LinearLayout>
+    </HorizontalScrollView>
 
 </LinearLayout>

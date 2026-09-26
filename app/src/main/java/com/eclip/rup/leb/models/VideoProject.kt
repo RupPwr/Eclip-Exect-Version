@@ -9,7 +9,7 @@ import java.io.Serializable
  * The original source video remains untouched; all edits are stored as operation objects.
  */
 data class VideoProject(
-    val sourceUri: Uri,
+    val sourceUri: Uri?,
     val sourceName: String,
     val scrubProxyUri: Uri? = null,
     val operations: List<EditOperation> = emptyList(),
@@ -91,10 +91,11 @@ data class VideoProject(
  */
 data class EditRecipe(
     val projectName: String,
-    val sourceUri: Uri,
+    val sourceUri: Uri?,
     val sourceName: String,
     val scrubProxyUri: Uri? = null,
     val operations: List<EditOperation> = emptyList(),
+    val durationMs: Long = 0L,
     val createdAt: Long = System.currentTimeMillis(),
     val lastModifiedAt: Long = System.currentTimeMillis()
 ) : Serializable {
@@ -103,11 +104,16 @@ data class EditRecipe(
      * Converts this EditRecipe back to a VideoProject for editing.
      */
     fun toVideoProject(): VideoProject {
+        val resolvedName = (sourceName ?: "").ifBlank {
+            (projectName ?: "").ifBlank {
+                sourceUri?.lastPathSegment?.takeIf { it.isNotBlank() } ?: "Untitled Video"
+            }
+        }
         return VideoProject(
-            sourceUri = sourceUri,
-            sourceName = sourceName,
+            sourceUri = sourceUri ?: Uri.EMPTY,
+            sourceName = resolvedName,
             scrubProxyUri = scrubProxyUri,
-            operations = operations,
+            operations = operations ?: emptyList(),
             createdAt = createdAt,
             lastModifiedAt = lastModifiedAt
         )
@@ -117,13 +123,20 @@ data class EditRecipe(
         /**
          * Create an EditRecipe from a VideoProject.
          */
-        fun fromVideoProject(projectName: String, project: VideoProject): EditRecipe {
+        fun fromVideoProject(projectName: String, project: VideoProject, durationMs: Long = 0L): EditRecipe {
+            val resolvedSourceName = (project.sourceName ?: "").ifBlank {
+                project.sourceUri?.lastPathSegment?.takeIf { it.isNotBlank() } ?: ""
+            }
+            val resolvedProjectName = (projectName ?: "").ifBlank {
+                resolvedSourceName.ifBlank { "Untitled Project" }
+            }
             return EditRecipe(
-                projectName = projectName,
+                projectName = resolvedProjectName,
                 sourceUri = project.sourceUri,
-                sourceName = project.sourceName,
+                sourceName = resolvedSourceName,
                 scrubProxyUri = project.scrubProxyUri,
-                operations = project.operations,
+                operations = project.operations ?: emptyList(),
+                durationMs = durationMs,
                 createdAt = project.createdAt,
                 lastModifiedAt = project.lastModifiedAt
             )
@@ -143,7 +156,7 @@ data class VideoEditingUiState(
     val pendingOperationCount: Int = 0,
     val currentPreviewOperationIndex: Int = -1, // -1 means show original, 0+ means after Nth operation
     val canUndo: Boolean = false,
-    val canRedo: Boolean = false // Future enhancement
+    val canRedo: Boolean = false
 )
 
 /**

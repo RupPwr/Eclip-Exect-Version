@@ -4,4 +4,11 @@
     <attr name="colorAccentContainer" format="color" />
     <attr name="colorOnAccentContainer" format="color" />
     <attr name="colorBackground" format="color" />
+
+    <declare-styleable name="ThreeDotLoadingView">
+        <attr name="dotColor" format="color" />
+        <attr name="dotRadius" format="dimension" />
+        <attr name="dotSpacing" format="dimension" />
+        <attr name="animationDuration" format="integer" />
+    </declare-styleable>
 </resources>

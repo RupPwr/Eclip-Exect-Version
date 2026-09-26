@@ -151,11 +151,12 @@
             android:clipToPadding="false"
             android:scrollbars="vertical" />
 
-        <ProgressBar
+        <com.eclip.rup.leb.customviews.ThreeDotLoadingView
             android:id="@+id/pbExplorerLoading"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
+            app:dotColor="@color/colorPrimary"
             android:visibility="gone" />
 
         <TextView

@@ -1,257 +1,719 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/textEditingToolbarRoot"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:background="@color/background">
 
-    <!-- Color Picker Container (Visible in Palette Mode) -->
-    <HorizontalScrollView
-        android:id="@+id/colorPickerContainer"
-        android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:scrollbars="none"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="8dp"
-        android:layout_marginHorizontal="16dp"
-        android:background="@drawable/bg_bottom_nav_floating"
-        android:elevation="12dp"
-        android:visibility="gone">
-        <LinearLayout
-            android:id="@+id/colorPickerList"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp" />
-    </HorizontalScrollView>
-
-    <!-- Format Settings Container -->
-    <include layout="@layout/text_format_settings"
-        android:id="@+id/formatSettingsContainer"
-        android:visibility="gone" />
-
-    <!-- Toolbar Row -->
-    <HorizontalScrollView
+    <!-- 1. Fixed Text Input Field -->
+    <LinearLayout
+        android:id="@+id/textInputContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:scrollbars="none"
-        android:background="@drawable/bg_bottom_nav_docked"
-        android:elevation="12dp"
-        android:clipToOutline="true"
-        android:requiresFadingEdge="horizontal"
-        android:fadingEdgeLength="32dp"
-        android:fillViewport="true">
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="6dp">
 
+        <com.eclip.rup.leb.customviews.ImeBackEditText
+            android:id="@+id/editTextInputText"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:background="@drawable/bg_text_input_bar"
+            android:paddingHorizontal="16dp"
+            android:hint="@string/type_here"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#6C727F"
+            android:textSize="14sp"
+            android:fontFamily="sans-serif"
+            android:singleLine="true"
+            android:imeOptions="actionDone"
+            android:inputType="textCapSentences|textMultiLine"
+            android:maxLines="3"
+            android:gravity="center_vertical" />
+    </LinearLayout>
+
+    <!-- 2. Fixed Toolbar Buttons Row (7 Icon Buttons) -->
+    <LinearLayout
+        android:id="@+id/textToolsButtonBar"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="8dp"
+        android:paddingBottom="2dp">
+
+        <!-- 1. Cancel (✕) -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <ImageButton
+                android:id="@+id/btnTextCancel"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_gravity="center"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_close_24"
+                android:padding="8dp"
+                android:scaleType="fitCenter"
+                android:contentDescription="Cancel"
+                app:tint="@color/toolTextInactive" />
+        </FrameLayout>
+
+        <!-- 2. Keyboard -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <ImageButton
+                android:id="@+id/btnTextKeyboardTab"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_gravity="center"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_keyboard_24"
+                android:padding="8dp"
+                android:scaleType="fitCenter"
+                android:contentDescription="Keyboard"
+                app:tint="@color/colorPrimary" />
+        </FrameLayout>
+
+        <!-- 3. Font (Aa) -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <ImageButton
+                android:id="@+id/btnTextFontTab"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_gravity="center"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_font_aa_24"
+                android:padding="8dp"
+                android:scaleType="fitCenter"
+                android:contentDescription="Font"
+                app:tint="@color/toolTextInactive" />
+        </FrameLayout>
+
+        <!-- 4. Color Palette (Wheel) -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <ImageButton
+                android:id="@+id/btnTextPaletteTab"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_gravity="center"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_color_wheel_24"
+                android:padding="7dp"
+                android:scaleType="fitCenter"
+                android:contentDescription="Color" />
+        </FrameLayout>
+
+        <!-- 5. Animation (Star) -->
+        <FrameLayout
+            android:id="@+id/btnTextAnimationContainer"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <ImageButton
+                android:id="@+id/btnTextAnimation"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_gravity="center"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_effect_24"
+                android:padding="8dp"
+                android:scaleType="fitCenter"
+                android:contentDescription="Animation"
+                app:tint="@color/toolTextInactive" />
+        </FrameLayout>
+
+        <!-- 6. Format / Adjust (Sliders) -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <ImageButton
+                android:id="@+id/btnTextFormatTab"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_gravity="center"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_tune_24"
+                android:padding="8dp"
+                android:scaleType="fitCenter"
+                android:contentDescription="Format"
+                app:tint="@color/toolTextInactive" />
+        </FrameLayout>
+
+        <!-- 7. Done (✓) -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+            <ImageButton
+                android:id="@+id/btnTextDone"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_gravity="center"
+                android:background="@drawable/tool_button_inactive"
+                android:src="@drawable/ic_check_24"
+                android:padding="8dp"
+                android:scaleType="fitCenter"
+                android:contentDescription="Done"
+                app:tint="@color/colorPrimary" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- 3. Fixed Tab Content Container (BELOW Toolbar Buttons Bar) -->
+    <FrameLayout
+        android:id="@+id/textTabContentContainer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:background="@color/background"
+        android:visibility="gone">
+
+        <!-- Tab 2 Content: Font Selection Panel -->
+        <include
+            android:id="@+id/fontSelectionContainer"
+            layout="@layout/layout_font_selection_panel"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+
+        <!-- Tab 3 Content: Color Picker Container -->
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center"
-            android:paddingVertical="8dp"
-            android:paddingHorizontal="8dp">
+            android:id="@+id/colorPickerContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:visibility="gone">
 
-            <!-- Cancel -->
+            <!-- 4 Color Target Options: Text | Label | Border | Shadow -->
             <LinearLayout
-                android:layout_width="60dp"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center">
-                <ImageButton
-                    android:id="@+id/btnTextCancel"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="@drawable/tool_button_inactive"
-                    android:src="@drawable/ic_close_24"
-                    android:padding="8dp"
-                    android:scaleType="fitCenter"
-                    app:tint="@color/toolTextInactive" />
+                android:id="@+id/colorTargetSelectorBar"
+                android:layout_width="match_parent"
+                android:layout_height="32dp"
+                android:orientation="horizontal"
+                android:background="@drawable/bg_font_chip_normal"
+                android:padding="2dp"
+                android:layout_marginBottom="8dp">
+
+                <!-- 1. Text -->
                 <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="@string/cancel"
-                    android:textSize="11sp"
+                    android:id="@+id/btnColorTargetText"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="Text"
+                    android:textSize="12sp"
                     android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/toolTextInactive" />
+                    android:background="@drawable/bg_font_chip_selected"
+                    android:textColor="#FFFFFF"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+                <!-- 2. Label -->
+                <TextView
+                    android:id="@+id/btnColorTargetLabel"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="Label"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="#8A8A93"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+                <!-- 3. Border -->
+                <TextView
+                    android:id="@+id/btnColorTargetBorder"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="Border"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="#8A8A93"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+                <!-- 4. Shadow -->
+                <TextView
+                    android:id="@+id/btnColorTargetShadow"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="Shadow"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="#8A8A93"
+                    android:clickable="true"
+                    android:focusable="true" />
             </LinearLayout>
 
-            <!-- Keyboard -->
-            <LinearLayout
-                android:layout_width="60dp"
+            <TextView
+                android:id="@+id/tvColorSectionTitle"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center">
-                <ImageButton
-                    android:id="@+id/btnTextKeyboardTab"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="@drawable/tool_button_inactive"
-                    android:src="@drawable/ic_keyboard_24"
-                    android:padding="8dp"
-                    android:scaleType="fitCenter"
-                    app:tint="@color/colorPrimary" />
-                <TextView
+                android:text="Text Color"
+                android:textColor="#C5C7D3"
+                android:textSize="12sp"
+                android:fontFamily="sans-serif-medium"
+                android:layout_marginBottom="6dp" />
+
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:scrollbars="none"
+                android:clipToPadding="false"
+                android:overScrollMode="never">
+                <LinearLayout
+                    android:id="@+id/colorPickerList"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="@string/str_keyboard"
-                    android:textSize="11sp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingVertical="4dp" />
+            </HorizontalScrollView>
+
+            <!-- Opacity Slider Row (Dynamically adapted for Text, Label, Border, Shadow) -->
+            <LinearLayout
+                android:id="@+id/textOpacityContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="8dp"
+                android:visibility="visible">
+
+                <TextView
+                    android:id="@+id/tvTextColorOpacityLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Opacity"
+                    android:textColor="#C5C7D3"
+                    android:textSize="12sp"
                     android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/colorPrimary" />
+                    android:layout_marginEnd="8dp" />
+
+                <com.google.android.material.slider.Slider
+                    android:id="@+id/seekTextColorOpacity"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:valueFrom="0.0"
+                    android:valueTo="100.0"
+                    android:value="100.0"
+                    android:stepSize="1.0"
+                    app:thumbColor="#FF2A6D"
+                    app:trackColorActive="#FF2A6D"
+                    app:trackColorInactive="#2A2A38"
+                    app:haloColor="#33FF2A6D" />
+
+                <TextView
+                    android:id="@+id/tvTextColorOpacityValue"
+                    android:layout_width="38dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:text="100%"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium" />
             </LinearLayout>
 
-            <!-- Color Palette -->
+            <!-- Border Width Slider Row (Shown when "Border" target is active) -->
             <LinearLayout
-                android:layout_width="60dp"
+                android:id="@+id/borderWidthContainer"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center">
-                <ImageButton
-                    android:id="@+id/btnTextPaletteTab"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="@drawable/tool_button_inactive"
-                    android:src="@drawable/ic_palette_24"
-                    android:padding="8dp"
-                    android:scaleType="fitCenter"
-                    app:tint="@color/toolTextInactive" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="4dp"
+                android:visibility="gone">
+
                 <TextView
+                    android:id="@+id/tvBorderWidthLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="@string/str_color"
-                    android:textSize="11sp"
+                    android:text="Width"
+                    android:textColor="#C5C7D3"
+                    android:textSize="12sp"
                     android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/toolTextInactive" />
+                    android:layout_marginEnd="8dp" />
+
+                <com.google.android.material.slider.Slider
+                    android:id="@+id/seekBorderWidthSlider"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:valueFrom="0.0"
+                    android:valueTo="100.0"
+                    android:value="15.0"
+                    android:stepSize="1.0"
+                    app:thumbColor="#FF2A6D"
+                    app:trackColorActive="#FF2A6D"
+                    app:trackColorInactive="#2A2A38"
+                    app:haloColor="#33FF2A6D" />
+
+                <TextView
+                    android:id="@+id/tvBorderWidthValue"
+                    android:layout_width="38dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:text="15%"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium" />
             </LinearLayout>
 
-            <!-- Format Settings -->
+            <!-- Shadow Controls Container (Compact 2-Row Layout: Row 1 = Opacity & Blur, Row 2 = X & Y) -->
             <LinearLayout
-                android:layout_width="60dp"
+                android:id="@+id/shadowControlsContainer"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:gravity="center">
-                <ImageButton
-                    android:id="@+id/btnTextFormatTab"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="@drawable/tool_button_inactive"
-                    android:src="@drawable/ic_format_24"
-                    android:padding="8dp"
-                    android:scaleType="fitCenter"
-                    app:tint="@color/toolTextInactive" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="Format"
-                    android:textSize="11sp"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/toolTextInactive" />
-            </LinearLayout>
+                android:layout_marginTop="2dp"
+                android:visibility="gone">
 
-            <!-- Duplicate -->
-            <LinearLayout
-                android:layout_width="60dp"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center">
-                <ImageButton
-                    android:id="@+id/btnTextDuplicate"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="@drawable/tool_button_inactive"
-                    android:src="@drawable/ic_copy_24"
-                    android:padding="8dp"
-                    android:scaleType="fitCenter"
-                    app:tint="@color/toolTextInactive" />
-                <TextView
-                    android:layout_width="wrap_content"
+                <!-- Row 1: Opacity & Blur -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="@string/str_duplicate"
-                    android:textSize="11sp"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/toolTextInactive" />
-            </LinearLayout>
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="2dp">
 
-            <!-- Keyframes -->
-            <LinearLayout
-                android:id="@+id/btnTextKeyframeContainer"
-                android:layout_width="60dp"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center">
-                <ImageButton
-                    android:id="@+id/btnTextKeyframe"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="@drawable/tool_button_inactive"
-                    android:src="@drawable/ic_keyframe_main"
-                    android:padding="8dp"
-                    android:scaleType="fitCenter"
-                    app:tint="@color/toolTextInactive" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="Keyframes"
-                    android:textSize="11sp"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/toolTextInactive" />
-            </LinearLayout>
+                    <!-- Opacity Control (Left) -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginEnd="6dp">
 
-            <!-- Delete -->
-            <LinearLayout
-                android:layout_width="60dp"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center">
-                <ImageButton
-                    android:id="@+id/btnTextDelete"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="@drawable/tool_button_inactive"
-                    android:src="@drawable/ic_delete_24"
-                    android:padding="8dp"
-                    android:scaleType="fitCenter"
-                    app:tint="#F44336" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="@string/delete"
-                    android:textSize="11sp"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="#F44336" />
-            </LinearLayout>
+                        <TextView
+                            android:id="@+id/tvShadowOpacityLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Opacity"
+                            android:textColor="#C5C7D3"
+                            android:textSize="11sp"
+                            android:fontFamily="sans-serif-medium"
+                            android:layout_marginEnd="4dp" />
 
-            <!-- Done -->
-            <LinearLayout
-                android:layout_width="60dp"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center">
-                <ImageButton
-                    android:id="@+id/btnTextDone"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:background="@drawable/tool_button_inactive"
-                    android:src="@drawable/ic_check_24"
-                    android:padding="8dp"
-                    android:scaleType="fitCenter"
-                    app:tint="@color/colorPrimary" />
-                <TextView
-                    android:layout_width="wrap_content"
+                        <com.google.android.material.slider.Slider
+                            android:id="@+id/seekShadowOpacity"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:valueFrom="0.0"
+                            android:valueTo="100.0"
+                            android:value="100.0"
+                            android:stepSize="1.0"
+                            app:thumbColor="#FF2A6D"
+                            app:trackColorActive="#FF2A6D"
+                            app:trackColorInactive="#2A2A38"
+                            app:haloColor="#33FF2A6D" />
+
+                        <TextView
+                            android:id="@+id/tvShadowOpacityValue"
+                            android:layout_width="32dp"
+                            android:layout_height="wrap_content"
+                            android:gravity="end"
+                            android:text="100%"
+                            android:textColor="#FFFFFF"
+                            android:textSize="11sp"
+                            android:fontFamily="sans-serif-medium" />
+                    </LinearLayout>
+
+                    <!-- Blur Control (Right) -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginStart="6dp">
+
+                        <TextView
+                            android:id="@+id/tvShadowBlurLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Blur"
+                            android:textColor="#C5C7D3"
+                            android:textSize="11sp"
+                            android:fontFamily="sans-serif-medium"
+                            android:layout_marginEnd="4dp" />
+
+                        <com.google.android.material.slider.Slider
+                            android:id="@+id/seekShadowBlur"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:valueFrom="0.0"
+                            android:valueTo="25.0"
+                            android:value="8.0"
+                            android:stepSize="1.0"
+                            app:thumbColor="#FF2A6D"
+                            app:trackColorActive="#FF2A6D"
+                            app:trackColorInactive="#2A2A38"
+                            app:haloColor="#33FF2A6D" />
+
+                        <TextView
+                            android:id="@+id/tvShadowBlurValue"
+                            android:layout_width="26dp"
+                            android:layout_height="wrap_content"
+                            android:gravity="end"
+                            android:text="8"
+                            android:textColor="#FFFFFF"
+                            android:textSize="11sp"
+                            android:fontFamily="sans-serif-medium" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Row 2: X & Y Offsets -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="@string/done"
-                    android:textSize="11sp"
-                    android:fontFamily="sans-serif-medium"
-                    android:textColor="@color/colorPrimary" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="2dp">
+
+                    <!-- X Offset Control (Left) -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginEnd="6dp">
+
+                        <TextView
+                            android:id="@+id/tvShadowXLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="X"
+                            android:textColor="#C5C7D3"
+                            android:textSize="11sp"
+                            android:fontFamily="sans-serif-medium"
+                            android:layout_marginEnd="4dp" />
+
+                        <com.google.android.material.slider.Slider
+                            android:id="@+id/seekShadowX"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:valueFrom="-25.0"
+                            android:valueTo="25.0"
+                            android:value="4.0"
+                            android:stepSize="1.0"
+                            app:thumbColor="#FF2A6D"
+                            app:trackColorActive="#FF2A6D"
+                            app:trackColorInactive="#2A2A38"
+                            app:haloColor="#33FF2A6D" />
+
+                        <TextView
+                            android:id="@+id/tvShadowXValue"
+                            android:layout_width="32dp"
+                            android:layout_height="wrap_content"
+                            android:gravity="end"
+                            android:text="4"
+                            android:textColor="#FFFFFF"
+                            android:textSize="11sp"
+                            android:fontFamily="sans-serif-medium" />
+                    </LinearLayout>
+
+                    <!-- Y Offset Control (Right) -->
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginStart="6dp">
+
+                        <TextView
+                            android:id="@+id/tvShadowYLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Y"
+                            android:textColor="#C5C7D3"
+                            android:textSize="11sp"
+                            android:fontFamily="sans-serif-medium"
+                            android:layout_marginEnd="4dp" />
+
+                        <com.google.android.material.slider.Slider
+                            android:id="@+id/seekShadowY"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:valueFrom="-25.0"
+                            android:valueTo="25.0"
+                            android:value="4.0"
+                            android:stepSize="1.0"
+                            app:thumbColor="#FF2A6D"
+                            app:trackColorActive="#FF2A6D"
+                            app:trackColorInactive="#2A2A38"
+                            app:haloColor="#33FF2A6D" />
+
+                        <TextView
+                            android:id="@+id/tvShadowYValue"
+                            android:layout_width="26dp"
+                            android:layout_height="wrap_content"
+                            android:gravity="end"
+                            android:text="4"
+                            android:textColor="#FFFFFF"
+                            android:textSize="11sp"
+                            android:fontFamily="sans-serif-medium" />
+                    </LinearLayout>
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
-    </HorizontalScrollView>
+
+        <!-- Tab 4 Content: Inline Animation Picker Container -->
+        <LinearLayout
+            android:id="@+id/animationPickerContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:visibility="gone">
+
+            <!-- Row 1: In/Out Toggle -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="6dp">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:orientation="horizontal"
+                    android:background="@drawable/bg_font_chip_normal"
+                    android:padding="2dp">
+
+                    <TextView
+                        android:id="@+id/tabInAnimInline"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:paddingHorizontal="16dp"
+                        android:gravity="center"
+                        android:text="In"
+                        android:textSize="12sp"
+                        android:fontFamily="sans-serif-medium"
+                        android:background="@drawable/bg_font_chip_selected"
+                        android:textColor="#FFFFFF"
+                        android:clickable="true"
+                        android:focusable="true" />
+
+                    <TextView
+                        android:id="@+id/tabOutAnimInline"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:paddingHorizontal="16dp"
+                        android:gravity="center"
+                        android:text="Out"
+                        android:textSize="12sp"
+                        android:fontFamily="sans-serif-medium"
+                        android:textColor="#8A8A93"
+                        android:clickable="true"
+                        android:focusable="true" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Row 2: Duration Slider Row (Below In/Out buttons) -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Duration"
+                    android:textColor="#C5C7D3"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:layout_marginEnd="8dp" />
+
+                <com.google.android.material.slider.Slider
+                    android:id="@+id/sliderAnimDurationInline"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:valueFrom="0.1"
+                    android:valueTo="2.0"
+                    android:stepSize="0.1"
+                    android:value="0.5"
+                    app:thumbColor="#FF2A6D"
+                    app:trackColorActive="#FF2A6D"
+                    app:trackColorInactive="#2A2A38"
+                    app:haloColor="#33FF2A6D" />
+
+                <TextView
+                    android:id="@+id/tvAnimDurationInline"
+                    android:layout_width="38dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:text="0.5s"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium" />
+            </LinearLayout>
+
+            <!-- Animation Presets List -->
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:scrollbars="none"
+                android:overScrollMode="never">
+                <LinearLayout
+                    android:id="@+id/animPresetsInlineList"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingVertical="4dp" />
+            </HorizontalScrollView>
+        </LinearLayout>
+
+        <!-- Tab 5 Content: Format / Adjustment Settings Container -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/formatSettingsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:scrollbars="vertical"
+            android:visibility="gone">
+
+            <include layout="@layout/text_format_settings"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+        </androidx.core.widget.NestedScrollView>
+
+    </FrameLayout>
 </LinearLayout>

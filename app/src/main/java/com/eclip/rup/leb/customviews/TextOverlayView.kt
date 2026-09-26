@@ -1,16 +1,13 @@
 package com.eclip.rup.leb.customviews
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
-import android.view.ScaleGestureDetector
 import android.view.View
 import com.eclip.rup.leb.models.EditOperation
 import com.eclip.rup.leb.models.TextPosition
@@ -33,33 +30,7 @@ class TextOverlayView @JvmOverloads constructor(
         setShadowLayer(4f, 2f, 2f, Color.BLACK)
     }
 
-    private var isDraggingSubtitle = false
-    private var dragStartX = 0f
-    private var dragStartY = 0f
-    private var initialRelativeX = 0.5f
-    private var initialRelativeY = 0.8f
-
-    private val subtitleBounds = android.graphics.RectF()
-    private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#007AFF") // Active accent color
-        style = Paint.Style.STROKE
-        strokeWidth = 3f
-        pathEffect = DashPathEffect(floatArrayOf(10f, 10f), 0f)
-    }
-
-    var isSubtitlesEditingActive: Boolean = false
-        set(value) {
-            field = value
-            invalidate()
-        }
-    var subtitleOperation: EditOperation.AddSubtitles? = null
-        set(value) {
-            field = value
-            this.subtitleCues = value?.cues ?: emptyList()
-            invalidate()
-        }
-    var onSubtitlePositionChanged: ((relativeX: Float, relativeY: Float) -> Unit)? = null
-
+    private val density get() = resources.displayMetrics.density
     private var overlayOperations: List<EditOperation> = emptyList()
     private val bitmapCache = mutableMapOf<String, Bitmap>()
 
@@ -104,8 +75,6 @@ class TextOverlayView @JvmOverloads constructor(
             invalidate()
         }
 
-    private var subtitleCues: List<com.eclip.rup.leb.models.SubtitleCue> = emptyList()
-
     fun setTextOperations(operations: List<EditOperation.AddText>) {
         this.overlayOperations = operations
         invalidate()
@@ -116,19 +85,14 @@ class TextOverlayView @JvmOverloads constructor(
         invalidate()
     }
 
-    fun setSubtitleCues(cues: List<com.eclip.rup.leb.models.SubtitleCue>) {
-        this.subtitleCues = cues
-        invalidate()
-    }
-
     fun setVideoSize(width: Int, height: Int) {
         this.videoWidth = width
         this.videoHeight = height
         invalidate()
     }
 
-    private fun getVideoRect(): android.graphics.RectF {
-        val rect = android.graphics.RectF()
+    private fun getVideoRect(): RectF {
+        val rect = RectF()
         if (width <= 0 || height <= 0 || videoWidth <= 0 || videoHeight <= 0) {
             rect.set(0f, 0f, width.toFloat(), height.toFloat())
             return rect
@@ -149,57 +113,6 @@ class TextOverlayView @JvmOverloads constructor(
         return rect
     }
 
-    private fun interpolateKeyframes(
-        keyframes: List<EditOperation.KeyframePoint>,
-        timeMs: Long,
-        defaultValue: Float
-    ): Float {
-        if (keyframes.isEmpty()) return defaultValue
-        val sorted = keyframes.sortedBy { it.timeMs }
-        if (timeMs <= sorted.first().timeMs) {
-            return sorted.first().valueX
-        }
-        if (timeMs >= sorted.last().timeMs) {
-            return sorted.last().valueX
-        }
-        for (i in 0 until sorted.size - 1) {
-            val k1 = sorted[i]
-            val k2 = sorted[i + 1]
-            if (timeMs >= k1.timeMs && timeMs <= k2.timeMs) {
-                val progress = (timeMs - k1.timeMs).toFloat() / (k2.timeMs - k1.timeMs)
-                return k1.valueX + progress * (k2.valueX - k1.valueX)
-            }
-        }
-        return defaultValue
-    }
-
-    private fun interpolateKeyframePosition(
-        keyframes: List<EditOperation.KeyframePoint>,
-        timeMs: Long,
-        defaultX: Float,
-        defaultY: Float
-    ): Pair<Float, Float> {
-        if (keyframes.isEmpty()) return Pair(defaultX, defaultY)
-        val sorted = keyframes.sortedBy { it.timeMs }
-        if (timeMs <= sorted.first().timeMs) {
-            return Pair(sorted.first().valueX, sorted.first().valueY)
-        }
-        if (timeMs >= sorted.last().timeMs) {
-            return Pair(sorted.last().valueX, sorted.last().valueY)
-        }
-        for (i in 0 until sorted.size - 1) {
-            val k1 = sorted[i]
-            val k2 = sorted[i + 1]
-            if (timeMs >= k1.timeMs && timeMs <= k2.timeMs) {
-                val progress = (timeMs - k1.timeMs).toFloat() / (k2.timeMs - k1.timeMs)
-                val x = k1.valueX + progress * (k2.valueX - k1.valueX)
-                val y = k1.valueY + progress * (k2.valueY - k1.valueY)
-                return Pair(x, y)
-            }
-        }
-        return Pair(defaultX, defaultY)
-    }
-
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
@@ -214,39 +127,36 @@ class TextOverlayView @JvmOverloads constructor(
                 if (currentPositionMs < start || currentPositionMs > end) continue
 
                 paint.textSize = op.fontSize * scale
-                if (op.fontPath != null) {
-                    try {
-                        paint.typeface = android.graphics.Typeface.createFromFile(op.fontPath)
-                    } catch (e: Exception) {
-                        paint.typeface = android.graphics.Typeface.DEFAULT
-                    }
+                val baseTypeface = if (op.fontPath != null) {
+                    com.eclip.rup.leb.utils.FontManager.getTypeface(op.fontPath)
                 } else {
-                    paint.typeface = android.graphics.Typeface.DEFAULT
+                    android.graphics.Typeface.DEFAULT
                 }
-
-                val relativeTimeMs = currentPositionMs - start
-                val interpolatedPos = if (op.positionKeyframes.isNotEmpty()) {
-                    interpolateKeyframePosition(op.positionKeyframes, relativeTimeMs, op.relativeX ?: 0.5f, op.relativeY ?: 0.5f)
+                val tfStyle = (if (op.isBold) android.graphics.Typeface.BOLD else 0) or (if (op.isItalic) android.graphics.Typeface.ITALIC else 0)
+                paint.typeface = android.graphics.Typeface.create(baseTypeface, tfStyle)
+                paint.isFakeBoldText = op.isBold
+                paint.textSkewX = if (op.isItalic) -0.25f else 0f
+                if (op.isUnderline) {
+                    paint.flags = paint.flags or Paint.UNDERLINE_TEXT_FLAG
                 } else {
-                    Pair(op.relativeX, op.relativeY)
-                }
-                val interpolatedOpacity = if (op.opacityKeyframes.isNotEmpty()) {
-                    interpolateKeyframes(op.opacityKeyframes, relativeTimeMs, op.opacity)
-                } else {
-                    op.opacity
+                    paint.flags = paint.flags and Paint.UNDERLINE_TEXT_FLAG.inv()
                 }
 
                 val baseColorInt = try { Color.parseColor(op.color) } catch (e: Exception) { Color.WHITE }
-                val alphaInt = (interpolatedOpacity * 255).toInt().coerceIn(0, 255)
+                val alphaInt = (op.opacity * 255).toInt().coerceIn(0, 255)
                 paint.color = Color.argb(alphaInt, Color.red(baseColorInt), Color.green(baseColorInt), Color.blue(baseColorInt))
-                
                 paint.letterSpacing = op.letterSpacing
 
-                val lines = op.text.split("\n")
+                val rawText = when (op.caseMode) {
+                    1 -> op.text.uppercase()
+                    2 -> op.text.lowercase()
+                    else -> op.text
+                }
+                val maxLineWidth = op.relativeWidth?.let { it * videoRect.width() }
+                val lines = getLinesForText(rawText, maxLineWidth, paint)
                 val textHeight = (paint.descent() - paint.ascent()) + op.lineSpacing * scale
                 val totalHeight = lines.size * textHeight
                 
-                // Find max width among lines
                 var maxTextWidth = 0f
                 for (line in lines) {
                     val w = paint.measureText(line)
@@ -256,12 +166,11 @@ class TextOverlayView @JvmOverloads constructor(
                 val startX: Float
                 val startY: Float
 
-                val rx = interpolatedPos.first
-                val ry = interpolatedPos.second
-                val hasCustomPos = rx != null && ry != null || op.positionKeyframes.isNotEmpty()
+                val rx = op.relativeX
+                val ry = op.relativeY
+                val hasCustomPos = rx != null && ry != null
 
                 if (hasCustomPos) {
-                    // WYSIWYG drag-and-drop coordinates (fractional 0.0–1.0) relative to text center
                     val cx = rx ?: 0.5f
                     val cy = ry ?: 0.5f
                     val centerX = videoRect.left + (cx * videoRect.width())
@@ -322,275 +231,332 @@ class TextOverlayView @JvmOverloads constructor(
                     }
                 }
 
-                // Draw each line
+                val centerX = if (hasCustomPos) videoRect.left + ((rx ?: 0.5f) * videoRect.width()) else startX + (maxTextWidth / 2f)
+                val centerY = if (hasCustomPos) videoRect.top + ((ry ?: 0.5f) * videoRect.height()) else startY + (totalHeight / 2f)
+
+                val clipDuration = end - start
+                val relTime = currentPositionMs - start
+                val animDuration = minOf(op.animationDurationMs, clipDuration / 2)
+
+                var animAlpha = 1.0f
+                var animScale = 1.0f
+                var animTransX = 0f
+                var animTransY = 0f
+
+                // In-animation
+                if (relTime < animDuration && animDuration > 0) {
+                    val progress = (relTime.toFloat() / animDuration).coerceIn(0f, 1f)
+                    when (op.inAnimation.uppercase()) {
+                        "FADE", "FADE_IN", "FADE IN" -> animAlpha *= progress
+                        "ZOOM", "ZOOM_IN", "ZOOM IN" -> {
+                            animScale *= (0.3f + 0.7f * progress)
+                            animAlpha *= progress
+                        }
+                        "SLIDE_LEFT", "SLIDE LEFT" -> animTransX += (1f - progress) * (-maxTextWidth)
+                        "SLIDE_RIGHT", "SLIDE RIGHT" -> animTransX += (1f - progress) * (maxTextWidth)
+                        "SLIDE_UP", "SLIDE UP" -> animTransY += (1f - progress) * (-totalHeight)
+                        "SLIDE_DOWN", "SLIDE DOWN" -> animTransY += (1f - progress) * (totalHeight)
+                    }
+                }
+
+                // Out-animation
+                val timeToEnd = end - currentPositionMs
+                if (timeToEnd < animDuration && animDuration > 0) {
+                    val progress = (timeToEnd.toFloat() / animDuration).coerceIn(0f, 1f)
+                    when (op.outAnimation.uppercase()) {
+                        "FADE", "FADE_OUT", "FADE OUT" -> animAlpha *= progress
+                        "ZOOM", "ZOOM_OUT", "ZOOM OUT" -> {
+                            animScale *= (0.3f + 0.7f * progress)
+                            animAlpha *= progress
+                        }
+                        "SLIDE_LEFT", "SLIDE LEFT" -> animTransX += (1f - progress) * (maxTextWidth)
+                        "SLIDE_RIGHT", "SLIDE RIGHT" -> animTransX += (1f - progress) * (-maxTextWidth)
+                        "SLIDE_UP", "SLIDE UP" -> animTransY += (1f - progress) * (totalHeight)
+                        "SLIDE_DOWN", "SLIDE DOWN" -> animTransY += (1f - progress) * (-totalHeight)
+                    }
+                }
+
+                val finalAlphaInt = (alphaInt * animAlpha).toInt().coerceIn(0, 255)
+
+                canvas.save()
+                canvas.translate(animTransX, animTransY)
+                if (animScale != 1.0f) {
+                    canvas.scale(animScale, animScale, centerX, centerY)
+                }
+                if (op.rotationAngle != 0f) {
+                    canvas.rotate(op.rotationAngle, centerX, centerY)
+                }
+
+                // 1. Draw Label background box if specified (Independent from text opacity)
+                if (op.labelColor != "NONE" && op.labelColor.isNotBlank() && !op.labelColor.equals("#00000000", ignoreCase = true) && op.labelOpacity > 0f) {
+                    val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        style = Paint.Style.FILL
+                        val baseLabelColor = try { Color.parseColor(op.labelColor) } catch (e: Exception) { Color.TRANSPARENT }
+                        val baseAlpha = Color.alpha(baseLabelColor).takeIf { it > 0 } ?: 255
+                        val labelAlpha = ((baseAlpha / 255f) * op.labelOpacity * animAlpha * 255).toInt().coerceIn(0, 255)
+                        color = Color.argb(labelAlpha, Color.red(baseLabelColor), Color.green(baseLabelColor), Color.blue(baseLabelColor))
+                    }
+                    val padH = 12f * scale
+                    val padV = 6f * scale
+                    val bgRect = RectF(
+                        startX - padH,
+                        startY + paint.ascent() - padV,
+                        startX + maxTextWidth + padH,
+                        startY + totalHeight - textHeight + paint.descent() + padV
+                    )
+                    canvas.drawRoundRect(bgRect, 8f * scale, 8f * scale, labelPaint)
+                }
+
+                // 2. Configure Shadow on paint if specified (Independent from text opacity)
+                if (op.shadowColor != "NONE" && op.shadowColor.isNotBlank() && !op.shadowColor.equals("#00000000", ignoreCase = true) && op.shadowOpacity > 0f) {
+                    val shadowColorInt = try { Color.parseColor(op.shadowColor) } catch (e: Exception) { Color.BLACK }
+                    val baseAlpha = Color.alpha(shadowColorInt).takeIf { it > 0 } ?: 255
+                    val shadowAlpha = ((baseAlpha / 255f) * op.shadowOpacity * animAlpha * 255).toInt().coerceIn(0, 255)
+                    val effRadius = if (op.shadowRadius <= 0f) 0.1f else op.shadowRadius
+                    paint.setShadowLayer(effRadius * scale, op.shadowDx * scale, op.shadowDy * scale, Color.argb(shadowAlpha, Color.red(shadowColorInt), Color.green(shadowColorInt), Color.blue(shadowColorInt)))
+                } else {
+                    paint.clearShadowLayer()
+                }
+
+                val textAlphaInt = (op.opacity * animAlpha * 255).toInt().coerceIn(0, 255)
+
                 for ((index, line) in lines.withIndex()) {
                     val lineW = paint.measureText(line)
                     val lineX = when (op.textAlign) {
                         "left", "L" -> startX
                         "right", "R" -> startX + maxTextWidth - lineW
-                        else -> startX + (maxTextWidth - lineW) / 2 // center
+                        else -> startX + (maxTextWidth - lineW) / 2
                     }
                     val lineY = startY + (index * textHeight)
 
-                    if (op.borderThickness > 0) {
+                    if (op.borderColor != "NONE" && op.borderColor.isNotBlank() && op.borderOpacity > 0f && op.borderThickness > 0) {
                         paint.style = Paint.Style.STROKE
-                        paint.strokeWidth = op.borderThickness * scale
+                        val progress = op.borderThickness.coerceIn(0, 100) / 100f
+                        val minStroke = 1.5f * density
+                        val maxStroke = 16.0f * density
+                        paint.strokeWidth = minStroke + progress * (maxStroke - minStroke)
                         paint.strokeJoin = Paint.Join.ROUND
+                        paint.strokeCap = Paint.Cap.ROUND
                         val borderColorInt = try { Color.parseColor(op.borderColor) } catch (e: Exception) { Color.BLACK }
-                        paint.color = Color.argb(alphaInt, Color.red(borderColorInt), Color.green(borderColorInt), Color.blue(borderColorInt))
+                        val baseAlpha = Color.alpha(borderColorInt).takeIf { it > 0 } ?: 255
+                        val borderAlpha = ((baseAlpha / 255f) * op.borderOpacity * animAlpha * 255).toInt().coerceIn(0, 255)
+                        paint.color = Color.argb(borderAlpha, Color.red(borderColorInt), Color.green(borderColorInt), Color.blue(borderColorInt))
                         canvas.drawText(line, lineX, lineY, paint)
 
                         paint.style = Paint.Style.FILL
-                        paint.color = Color.argb(alphaInt, Color.red(baseColorInt), Color.green(baseColorInt), Color.blue(baseColorInt))
+                        paint.color = Color.argb(textAlphaInt, Color.red(baseColorInt), Color.green(baseColorInt), Color.blue(baseColorInt))
                     } else {
                         paint.style = Paint.Style.FILL
+                        paint.color = Color.argb(textAlphaInt, Color.red(baseColorInt), Color.green(baseColorInt), Color.blue(baseColorInt))
                     }
                     
                     canvas.drawText(line, lineX, lineY, paint)
                 }
-            }
-        }
-
-        // Render subtitles centered at bottom or custom positioned
-        val activeCue = subtitleCues.firstOrNull { currentPositionMs in it.startTimeMs..it.endTimeMs }
-            ?: if (isSubtitlesEditingActive && subtitleOperation != null) {
-                com.eclip.rup.leb.models.SubtitleCue(0, 0, "[Subtitle Preview]")
-            } else {
-                null
-            }
-
-        if (activeCue != null) {
-            val subOp = subtitleOperation
-            val fontSizeVal = subOp?.fontSize ?: 22
-            paint.textSize = fontSizeVal.toFloat() * context.resources.displayMetrics.density * scale
-            if (subOp?.fontPath != null) {
-                try {
-                    paint.typeface = android.graphics.Typeface.createFromFile(subOp.fontPath)
-                } catch (e: Exception) {
-                    paint.typeface = android.graphics.Typeface.DEFAULT
-                }
-            } else {
-                paint.typeface = android.graphics.Typeface.DEFAULT
-            }
-            paint.color = Color.WHITE
-
-            val bgPaint = Paint().apply {
-                isAntiAlias = true
-                style = Paint.Style.FILL
-                color = Color.parseColor("#80000000")
-            }
-            val showBg = true
-
-            val rectW = videoRect.width()
-            val rectH = videoRect.height()
-            val rectL = videoRect.left
-            val rectT = videoRect.top
-
-            val maxAvailableWidth = rectW * 0.85f
-            val lines = wrapTextForCanvas(activeCue.text, paint, maxAvailableWidth)
-            val textHeight = paint.descent() - paint.ascent()
-            
-            val totalBlockHeight = lines.size * textHeight
-            val maxLineWidth = lines.maxOfOrNull { paint.measureText(it) } ?: 0f
-
-            val refX: Float
-            val refY: Float
-
-            if (subOp != null && subOp.hasCustomPosition()) {
-                refX = rectL + (subOp.relativeX!! * rectW)
-                refY = rectT + (subOp.relativeY!! * rectH)
-                
-                // Draw centering each line horizontally around refX and the whole block vertically around refY
-                var currentY = refY - (totalBlockHeight / 2f) - ((paint.ascent() + paint.descent()) / 2f)
-                
-                // Update bounds for border
-                val paddingVal = 12f * scale
-                subtitleBounds.set(
-                    refX - (maxLineWidth / 2f) - paddingVal,
-                    refY - (totalBlockHeight / 2f) - paddingVal,
-                    refX + (maxLineWidth / 2f) + paddingVal,
-                    refY + (totalBlockHeight / 2f) + paddingVal
-                )
-
-                for (line in lines) {
-                    val lineTextWidth = paint.measureText(line)
-                    val lineX = refX - (lineTextWidth / 2f)
-                    
-                    if (showBg) {
-                        val paddingX = 8f * scale
-                        val paddingY = 4f * scale
-                        canvas.drawRoundRect(
-                            lineX - paddingX,
-                            currentY + paint.ascent() - paddingY,
-                            lineX + lineTextWidth + paddingX,
-                            currentY + paint.descent() + paddingY,
-                            8f * scale, 8f * scale, bgPaint
-                        )
-                    }
-                    canvas.drawText(line, lineX, currentY, paint)
-                    currentY += textHeight
-                }
-            } else {
-                // Predefined position alignment
-                val pos = subOp?.position ?: TextPosition.BOTTOM_CENTER
-                
-                when (pos) {
-                    TextPosition.TOP_LEFT -> {
-                        refX = rectL + 16f * scale + (maxLineWidth / 2f)
-                        refY = rectT + 32f * scale + (totalBlockHeight / 2f)
-                    }
-                    TextPosition.TOP_CENTER, TextPosition.CENTER_TOP -> {
-                        refX = rectL + rectW / 2
-                        refY = rectT + 32f * scale + (totalBlockHeight / 2f)
-                    }
-                    TextPosition.TOP_RIGHT -> {
-                        refX = rectL + rectW - 16f * scale - (maxLineWidth / 2f)
-                        refY = rectT + 32f * scale + (totalBlockHeight / 2f)
-                    }
-                    TextPosition.CENTER_LEFT -> {
-                        refX = rectL + 16f * scale + (maxLineWidth / 2f)
-                        refY = rectT + rectH / 2
-                    }
-                    TextPosition.CENTER -> {
-                        refX = rectL + rectW / 2
-                        refY = rectT + rectH / 2
-                    }
-                    TextPosition.CENTER_RIGHT -> {
-                        refX = rectL + rectW - 16f * scale - (maxLineWidth / 2f)
-                        refY = rectT + rectH / 2
-                    }
-                    TextPosition.BOTTOM_LEFT -> {
-                        refX = rectL + 16f * scale + (maxLineWidth / 2f)
-                        refY = rectT + rectH - 16f * scale - (totalBlockHeight / 2f)
-                    }
-                    TextPosition.BOTTOM_CENTER, TextPosition.CENTER_BOTTOM -> {
-                        refX = rectL + rectW / 2
-                        val density = context.resources.displayMetrics.density
-                        refY = rectT + rectH - 24f * scale * density - (totalBlockHeight / 2f)
-                    }
-                    TextPosition.BOTTOM_RIGHT -> {
-                        refX = rectL + rectW - 16f * scale - (maxLineWidth / 2f)
-                        refY = rectT + rectH - 16f * scale - (totalBlockHeight / 2f)
-                    }
-                }
-                
-                // Update bounds for border
-                val paddingVal = 12f * scale
-                subtitleBounds.set(
-                    refX - (maxLineWidth / 2f) - paddingVal,
-                    refY - (totalBlockHeight / 2f) - paddingVal,
-                    refX + (maxLineWidth / 2f) + paddingVal,
-                    refY + (totalBlockHeight / 2f) + paddingVal
-                )
-
-                var currentY = refY - (totalBlockHeight / 2f) - ((paint.ascent() + paint.descent()) / 2f)
-                for (line in lines) {
-                    val lineTextWidth = paint.measureText(line)
-                    val lineX = when (pos) {
-                        TextPosition.TOP_LEFT, TextPosition.CENTER_LEFT, TextPosition.BOTTOM_LEFT -> {
-                            refX - (maxLineWidth / 2f)
-                        }
-                        TextPosition.TOP_RIGHT, TextPosition.CENTER_RIGHT, TextPosition.BOTTOM_RIGHT -> {
-                            refX + (maxLineWidth / 2f) - lineTextWidth
-                        }
-                        else -> {
-                            refX - (lineTextWidth / 2f)
-                        }
-                    }
-                    
-                    if (showBg) {
-                        val paddingX = 8f * scale
-                        val paddingY = 4f * scale
-                        canvas.drawRoundRect(
-                            lineX - paddingX,
-                            currentY + paint.ascent() - paddingY,
-                            lineX + lineTextWidth + paddingX,
-                            currentY + paint.descent() + paddingY,
-                            8f * scale, 8f * scale, bgPaint
-                        )
-                    }
-                    canvas.drawText(line, lineX, currentY, paint)
-                    currentY += textHeight
-                }
-            }
-
-            // Draw dotted selection border if subtitles editing is active
-            if (isSubtitlesEditingActive) {
-                canvas.drawRect(subtitleBounds, selectionPaint)
+                paint.clearShadowLayer()
+                canvas.restore()
             }
         }
     }
 
-    @SuppressLint("ClickableViewAccessibility")
-    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
-        if (!isSubtitlesEditingActive || subtitleOperation == null) {
-            return super.onTouchEvent(event)
-        }
+    var onTextClicked: ((EditOperation.AddText) -> Unit)? = null
 
-
+    fun findTextAtPosition(touchX: Float, touchY: Float): EditOperation.AddText? {
         val videoRect = getVideoRect()
+        if (videoRect.isEmpty) return null
+        val scale = if (videoHeight > 0) videoRect.height() / videoHeight.toFloat() else 1f
 
+        // Search top-to-bottom (reversed order of drawing)
+        for (op in overlayOperations.reversed()) {
+            if (op is EditOperation.AddText) {
+                if (op.id == hiddenOperationId) continue
+                val start = op.startTimeMs ?: 0L
+                val end = op.endTimeMs ?: Long.MAX_VALUE
+                if (currentPositionMs < start || currentPositionMs > end) continue
+
+                paint.textSize = op.fontSize * scale
+                val baseTypeface = if (op.fontPath != null) {
+                    com.eclip.rup.leb.utils.FontManager.getTypeface(op.fontPath)
+                } else {
+                    android.graphics.Typeface.DEFAULT
+                }
+                val tfStyle = (if (op.isBold) android.graphics.Typeface.BOLD else 0) or (if (op.isItalic) android.graphics.Typeface.ITALIC else 0)
+                paint.typeface = android.graphics.Typeface.create(baseTypeface, tfStyle)
+                paint.isFakeBoldText = op.isBold
+                paint.letterSpacing = op.letterSpacing
+
+                val rawText = when (op.caseMode) {
+                    1 -> op.text.uppercase()
+                    2 -> op.text.lowercase()
+                    else -> op.text
+                }
+                val maxLineWidth = op.relativeWidth?.let { it * videoRect.width() }
+                val lines = getLinesForText(rawText, maxLineWidth, paint)
+                val textHeight = (paint.descent() - paint.ascent()) + op.lineSpacing * scale
+                val totalHeight = lines.size * textHeight
+                
+                var maxTextWidth = 0f
+                for (line in lines) {
+                    val w = paint.measureText(line)
+                    if (w > maxTextWidth) maxTextWidth = w
+                }
+
+                val rx = op.relativeX
+                val ry = op.relativeY
+                val hasCustomPos = rx != null && ry != null
+
+                val centerX: Float
+                val centerY: Float
+
+                if (hasCustomPos) {
+                    val cx = rx ?: 0.5f
+                    val cy = ry ?: 0.5f
+                    centerX = videoRect.left + (cx * videoRect.width())
+                    centerY = videoRect.top + (cy * videoRect.height())
+                } else {
+                    val rectW = videoRect.width()
+                    val rectH = videoRect.height()
+                    val rectL = videoRect.left
+                    val rectT = videoRect.top
+
+                    val startX: Float
+                    val startY: Float
+
+                    when (op.position) {
+                        TextPosition.TOP_LEFT -> {
+                            startX = rectL + 16f
+                            startY = rectT + 32f - paint.ascent()
+                        }
+                        TextPosition.TOP_CENTER -> {
+                            startX = rectL + (rectW - maxTextWidth) / 2
+                            startY = rectT + 32f - paint.ascent()
+                        }
+                        TextPosition.TOP_RIGHT -> {
+                            startX = rectL + rectW - maxTextWidth - 16f
+                            startY = rectT + 32f - paint.ascent()
+                        }
+                        TextPosition.CENTER_LEFT -> {
+                            startX = rectL + 16f
+                            startY = rectT + rectH / 2 - totalHeight / 2 - paint.ascent()
+                        }
+                        TextPosition.CENTER -> {
+                            startX = rectL + (rectW - maxTextWidth) / 2
+                            startY = rectT + rectH / 2 - totalHeight / 2 - paint.ascent()
+                        }
+                        TextPosition.CENTER_RIGHT -> {
+                            startX = rectL + rectW - maxTextWidth - 16f
+                            startY = rectT + rectH / 2 - totalHeight / 2 - paint.ascent()
+                        }
+                        TextPosition.BOTTOM_LEFT -> {
+                            startX = rectL + 16f
+                            startY = rectT + rectH - 16f - totalHeight + textHeight - paint.descent()
+                        }
+                        TextPosition.BOTTOM_CENTER -> {
+                            startX = rectL + (rectW - maxTextWidth) / 2
+                            startY = rectT + rectH - 16f - totalHeight + textHeight - paint.descent()
+                        }
+                        TextPosition.BOTTOM_RIGHT -> {
+                            startX = rectL + rectW - maxTextWidth - 16f
+                            startY = rectT + rectH - 16f - totalHeight + textHeight - paint.descent()
+                        }
+                        TextPosition.CENTER_BOTTOM -> {
+                            startX = rectL + (rectW - maxTextWidth) / 2
+                            startY = rectT + rectH - 16f - totalHeight + textHeight - paint.descent()
+                        }
+                        TextPosition.CENTER_TOP -> {
+                            startX = rectL + (rectW - maxTextWidth) / 2
+                            startY = rectT + 32f - paint.ascent()
+                        }
+                    }
+                    centerX = startX + (maxTextWidth / 2f)
+                    centerY = startY + (totalHeight / 2f)
+                }
+
+                // Check rotation unprojected coordinates
+                val angleRad = Math.toRadians(-op.rotationAngle.toDouble())
+                val cosA = Math.cos(angleRad)
+                val sinA = Math.sin(angleRad)
+                val dx = touchX - centerX
+                val dy = touchY - centerY
+                val localX = (dx * cosA - dy * sinA).toFloat()
+                val localY = (dx * sinA + dy * cosA).toFloat()
+
+                val touchPadH = 20f * scale + 16f
+                val touchPadV = 16f * scale + 16f
+                val halfW = (maxTextWidth / 2f) + touchPadH
+                val halfH = (totalHeight / 2f) + touchPadV
+
+                if (localX >= -halfW && localX <= halfW && localY >= -halfH && localY <= halfH) {
+                    return op
+                }
+            }
+        }
+        return null
+    }
+
+    private var downX = 0f
+    private var downY = 0f
+    private var downTargetOp: EditOperation.AddText? = null
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
         when (event.actionMasked) {
             android.view.MotionEvent.ACTION_DOWN -> {
-                val touchX = event.x
-                val touchY = event.y
-                if (subtitleBounds.contains(touchX, touchY)) {
-                    isDraggingSubtitle = true
-                    dragStartX = touchX
-                    dragStartY = touchY
-                    initialRelativeX = subtitleOperation?.relativeX ?: 0.5f
-                    initialRelativeY = subtitleOperation?.relativeY ?: 0.8f
-                    return true
-                }
+                downX = event.x
+                downY = event.y
+                downTargetOp = findTextAtPosition(event.x, event.y)
+                return downTargetOp != null
             }
-            android.view.MotionEvent.ACTION_MOVE -> {
-                if (isDraggingSubtitle) {
-                    val deltaX = event.x - dragStartX
-                    val deltaY = event.y - dragStartY
-                    val newRelX = (initialRelativeX + deltaX / videoRect.width()).coerceIn(0f, 1f)
-                    val newRelY = (initialRelativeY + deltaY / videoRect.height()).coerceIn(0f, 1f)
-                    onSubtitlePositionChanged?.invoke(newRelX, newRelY)
-                    return true
-                }
-            }
-            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
-                if (isDraggingSubtitle) {
-                    isDraggingSubtitle = false
-                    return true
-                }
-            }
-        }
-        return true
-    }
-
-    private fun wrapTextForCanvas(text: String, paint: Paint, maxWidth: Float): List<String> {
-        if (maxWidth <= 0f) return listOf(text)
-        val resultLines = mutableListOf<String>()
-        val rawLines = text.split("\n")
-        for (rawLine in rawLines) {
-            if (paint.measureText(rawLine) <= maxWidth) {
-                resultLines.add(rawLine)
-            } else {
-                val words = rawLine.split(Regex("\\s+"))
-                var currentLine = StringBuilder()
-                for (word in words) {
-                    if (currentLine.isEmpty()) {
-                        currentLine.append(word)
-                    } else {
-                        val testLine = "$currentLine $word"
-                        if (paint.measureText(testLine) <= maxWidth) {
-                            currentLine.append(" ").append(word)
-                        } else {
-                            resultLines.add(currentLine.toString())
-                            currentLine = StringBuilder(word)
-                        }
+            android.view.MotionEvent.ACTION_UP -> {
+                val dx = Math.abs(event.x - downX)
+                val dy = Math.abs(event.y - downY)
+                val slop = 20f
+                if (dx <= slop && dy <= slop) {
+                    val target = downTargetOp ?: findTextAtPosition(event.x, event.y)
+                    if (target != null) {
+                        onTextClicked?.invoke(target)
+                        downTargetOp = null
+                        return true
                     }
                 }
-                if (currentLine.isNotEmpty()) {
-                    resultLines.add(currentLine.toString())
-                }
+                downTargetOp = null
+            }
+            android.view.MotionEvent.ACTION_CANCEL -> {
+                downTargetOp = null
             }
         }
-        return if (resultLines.isEmpty()) listOf(text) else resultLines
+        return super.onTouchEvent(event)
+    }
+
+    private fun getLinesForText(rawText: String, maxLineWidth: Float?, textPaint: Paint): List<String> {
+        val rawLines = rawText.split("\n")
+        if (maxLineWidth == null || maxLineWidth <= 0f) {
+            return rawLines
+        }
+        val result = ArrayList<String>()
+        for (line in rawLines) {
+            if (line.isEmpty()) {
+                result.add("")
+                continue
+            }
+            val words = line.split(" ")
+            var current = StringBuilder()
+            for (word in words) {
+                if (current.isEmpty()) {
+                    current.append(word)
+                } else {
+                    val candidate = "$current $word"
+                    if (textPaint.measureText(candidate) <= maxLineWidth) {
+                        current.append(" ").append(word)
+                    } else {
+                        result.add(current.toString())
+                        current = StringBuilder(word)
+                    }
+                }
+            }
+            if (current.isNotEmpty()) {
+                result.add(current.toString())
+            }
+        }
+        return result
     }
 }
